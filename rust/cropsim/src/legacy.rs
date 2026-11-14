@@ -150,12 +150,12 @@ pub fn read_block(path: impl AsRef<Path>) -> Result<Block, Error> {
     b.spgrav = arr(r.floats(22)?);
     b.fragil = iarr(r.ints(22)?);
     b.restyp = iarr(r.ints(22)?);
-    for crop in 0..7 {
-        b.cc[crop][0] = arr(r.floats(10)?);
-        b.cc[crop][1] = arr(r.floats(10)?);
+    for crop in b.cc.iter_mut().take(7) {
+        crop[0] = arr(r.floats(10)?);
+        crop[1] = arr(r.floats(10)?);
     }
-    for stage in 0..3 {
-        b.cc[9][stage] = arr(r.floats(10)?); // alfalfa
+    for stage in b.cc[9].iter_mut() {
+        *stage = arr(r.floats(10)?); // alfalfa
     }
     b.kcl = arr(r.floats(22)?);
     b.kcu = arr(r.floats(22)?);
@@ -163,8 +163,8 @@ pub fn read_block(path: impl AsRef<Path>) -> Result<Block, Error> {
     b.tceil = arr(r.floats(22)?);
     b.snow = arr(r.floats(7)?);
     b.cnfallow = arr(r.floats(4)?);
-    for crop in 0..22 {
-        b.cn[crop] = arr(r.floats(4)?);
+    for crop in b.cn.iter_mut() {
+        *crop = arr(r.floats(4)?);
     }
     Ok(b)
 }
