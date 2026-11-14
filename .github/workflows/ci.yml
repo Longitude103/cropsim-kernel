@@ -47,7 +47,6 @@ jobs:
           owner: MODFLOW-ORG
           repo: modflow6
           tag: 6.8.1
-          subset: mf6
           github_token: ${{ github.token }}
       - run: cargo fmt -p mf6 --check
       - run: cargo clippy -p mf6 --all-targets -- -D warnings
