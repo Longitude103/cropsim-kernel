@@ -257,16 +257,17 @@ const wk = DAYS.map(d => ({ d, P: g(d,'D0','PRECIP'), Pe: g(d,'D3','EPRECIP') ??
   s += `<line x1="${L}" x2="${W-R}" y1="${mid}" y2="${mid}" stroke="var(--fg)" stroke-width="1.2"/>`;
   s += `<text x="12" y="${top+40}" font-size="11.5" fill="var(--muted)" transform="rotate(-90 12 ${top+40})" text-anchor="middle">in, inches</text>`;
   s += `<text x="${L+4}" y="${top-14}" font-size="12" fill="var(--muted)">Water arriving ↑</text><text x="${L+4}" y="${bot+20}" font-size="12" fill="var(--muted)">Water leaving the root zone ↓</text>`;
+  s = `<defs><pattern id="hatchRO" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--panel)"/><rect width="3" height="6" fill="var(--warn)"/></pattern></defs>` + s;
+  const bw1 = cw * 0.42;
   wk.forEach((x, i) => {
-    const cx = L + cw * i + cw / 2;
-    // in: rain (split into effective + runoff part) and irrigation
-    let y = mid; const h1 = x.Pe / sc, h2 = x.RO / sc, h3 = x.I / sc;
-    s += `<rect x="${cx - bw - 2}" y="${y - h1}" width="${bw}" height="${h1}" fill="var(--water)"/>`;
-    s += `<rect x="${cx - bw - 2}" y="${y - h1 - h2}" width="${bw}" height="${h2}" fill="var(--runoff)" opacity=".55"/>`;
-    s += `<rect x="${cx + 2}" y="${y - h3}" width="${bw}" height="${h3}" fill="var(--accent)"/>`;
-    // out: E, T, drain, runoff
-    let yo = mid; const o = [[x.E,'var(--heat)', .55],[x.Tr,'var(--heat)',1],[x.Dr,'var(--water)',.5],[x.RO,'var(--runoff)',1]];
-    o.forEach(([v,c,op]) => { const h = v / sc; s += `<rect x="${cx - bw/2}" y="${yo}" width="${bw}" height="${h}" fill="${c}" opacity="${op}"/>`; yo += h; });
+    const cx = L + cw * i + cw / 2, x0 = cx - bw1 / 2;
+    // arriving (one bar, centred): effective rain, then the runoff part of the rain (hatched), then net irrigation
+    let y = mid;
+    [[x.Pe,'var(--water)'],[x.RO,'url(#hatchRO)'],[x.I,'var(--accent)']].forEach(([v,c]) => { const h = v / sc; if (h > 0) { s += `<rect x="${x0}" y="${y - h}" width="${bw1}" height="${h}" fill="${c}"/>`; y -= h; } });
+    // leaving (same column, below the line): evaporation, transpiration, runoff (hatched), deep percolation
+    let yo = mid;
+    [[x.E,'var(--heat)',.5],[x.Tr,'var(--heat)',1],[x.RO,'url(#hatchRO)',1],[x.Dr,'var(--water-soft)',1]].forEach(([v,c,op]) => { const h = v / sc; if (h > 0) { s += `<rect x="${x0}" y="${yo}" width="${bw1}" height="${h}" fill="${c}" opacity="${op}"${c === 'var(--water-soft)' ? ' stroke="var(--water)" stroke-width="1.5"' : ''}/>`; yo += h; } });
+    if (x.RO > 0) s += `<text x="${x0 - 4}" y="${yo - 2}" font-size="11" text-anchor="end" fill="var(--warn)">${f(x.RO,2)} runoff</text>`;
     s += `<text x="${cx}" y="${bot + 0}" font-size="12" text-anchor="middle" font-weight="600">${dlabel(x.d.date)}</text>`;
     const lab = [];
     if (x.P > 0) lab.push(`${f(x.P,2)} rain`);
@@ -274,9 +275,10 @@ const wk = DAYS.map(d => ({ d, P: g(d,'D0','PRECIP'), Pe: g(d,'D3','EPRECIP') ??
     lab.forEach((t, k) => { s += `<text x="${cx}" y="${14 + k*14}" font-size="11" text-anchor="middle" fill="var(--muted)">${t}</text>`; });
   });
   const svg = $('#weekchart'); svg.setAttribute('viewBox', `0 0 ${W} ${bot + 30}`); svg.innerHTML = s;
-  $('#legend').innerHTML = [['var(--water)','Effective rain',1],['var(--runoff)','Runoff (part of rain that leaves)',.7],['var(--accent)','Net irrigation',1],
-    ['var(--heat)','Soil evaporation',.55],['var(--heat)','Transpiration',1],['var(--water)','Deep percolation',.5]]
-    .map(([c,t,o]) => `<span><i style="background:${c};opacity:${o}"></i>${t}</span>`).join('');
+  const drSum = wk.reduce((a,x)=>a+x.Dr,0);
+  $('#legend').innerHTML = [['var(--water)','Effective rain (soaks in)'],['repeating-linear-gradient(45deg,var(--warn) 0 2px,transparent 2px 4px)','Runoff: counted in the rain above the line and as water leaving below it'],['var(--accent)','Net irrigation'],
+    ['var(--heat)','Soil evaporation',.5],['var(--heat)','Transpiration'],['var(--water)', drSum > 0 ? 'Deep percolation' : 'Deep percolation (none this week)', 1, true]]
+    .map(([c,t,o,ring]) => `<span><i style="background:${ring ? 'transparent' : c};${ring ? `border:2px solid ${c};box-sizing:border-box;` : ''}opacity:${o ?? 1}"></i>${t}</span>`).join('');
 })();
 $('#glance-sub').textContent = (() => {
   const P = wk.reduce((a,x)=>a+x.P,0), RO = wk.reduce((a,x)=>a+x.RO,0), I = wk.reduce((a,x)=>a+x.I,0),
@@ -284,15 +286,15 @@ $('#glance-sub').textContent = (() => {
   return `Over the seven days: ${f(P,2)} in of rain (${f(RO,2)} in ran off), ${f(I,2)} in of net irrigation, ${f(ET,2)} in of ET against ${f(ETR,2)} in of reference ET, and ${f(Dr,2)} in of deep percolation. Click a row to open that day below.`;
 })();
 $('#daytable').innerHTML = `<thead><tr><th class="l">Day</th><th>Tmax / Tmin °F</th><th>ETr in</th><th>Kc</th><th>Rain in</th><th>Runoff in</th><th>Net irr. in</th><th>Evap. in</th><th>Transp. in</th><th>Deep perc. in</th><th>Mgmt-zone depletion in</th><th>Allowed in</th></tr></thead><tbody>` +
-  wk.map((x,i) => `<tr class="clickable" data-day="${i}" tabindex="0"><td class="l"><b>${dlabel(x.d.date,true)}</b> <span class="muted">· day ${x.d.jday}</span></td><td>${f(x.TX,1)} / ${f(x.TN,1)}</td><td>${f(x.ETR,3)}</td><td>${f(x.KC,3)}</td><td>${f(x.P,2)}</td><td>${f(x.RO,3)}</td><td>${f(x.I,3)}</td><td>${f(x.E,3)}</td><td>${f(x.Tr,3)}</td><td>${f(x.Dr,3)}</td><td>${f(x.AWD,3)}</td><td>${f(x.DPLA,3)}</td></tr>`).join('') + '</tbody>';
+  wk.map((x,i) => `<tr class="clickable" data-day="${i}" tabindex="0"><td class="l" style="white-space:nowrap"><b>${dlabel(x.d.date,true)}</b> <span class="muted">· day ${x.d.jday}</span></td><td>${f(x.TX,1)} / ${f(x.TN,1)}</td><td>${f(x.ETR,3)}</td><td>${f(x.KC,3)}</td><td>${f(x.P,2)}</td><td>${f(x.RO,3)}</td><td>${f(x.I,3)}</td><td>${f(x.E,3)}</td><td>${f(x.Tr,3)}</td><td>${f(x.Dr,3)}</td><td>${f(x.AWD,3)}</td><td>${f(x.DPLA,3)}</td></tr>`).join('') + '</tbody>';
 
 (function season(){
   const se = D.season.filter(x => x.j >= A.jdyplt - 10 && x.j <= A.jdymat + 10);
-  const W = 900, H = 200, L = 56, R = 16, top = 26, bot = 160;
+  const W = 900, H = 200, L = 56, R = 16, top = 30, bot = 164;
   const j0 = se[0].j, j1 = se[se.length-1].j, xs = j => L + (j - j0) / (j1 - j0) * (W - L - R);
   const mx = Math.max(...se.map(x => Math.max(x.AWD, x.DPLA || 0))) * 1.1;
   const ys = v => top + v / mx * (bot - top);   // depletion drawn downward
-  let s = `<text x="${L}" y="14" font-size="12" fill="var(--muted)">Season context: management-zone depletion (in, deeper = drier) and the allowed depletion that triggers the pivot. Ticks mark irrigations; the band is this week.</text>`;
+  let s = `<text x="${L}" y="14" font-size="12" fill="var(--muted)">Season: depletion (in, lower = drier) vs. the allowed depletion that triggers the pivot. Ticks = irrigations, dots = rain ≥ 0.5 in, band = this week.</text>`;
   s += `<rect x="${xs(D.d0)-2}" y="${top}" width="${xs(D.d0+6)-xs(D.d0)+4}" height="${bot-top}" fill="var(--chip)"/>`;
   [0, mx/2, mx].forEach(v => { s += `<line x1="${L}" x2="${W-R}" y1="${ys(v)}" y2="${ys(v)}" stroke="var(--line)"/><text x="${L-8}" y="${ys(v)+4}" font-size="11" text-anchor="end" fill="var(--muted)">${v.toFixed(1)}</text>`; });
   const path = (key) => se.filter(x => x[key] !== null && x[key] !== undefined).map((x,k) => (k ? 'L' : 'M') + xs(x.j).toFixed(1) + ' ' + ys(x[key]).toFixed(1)).join(' ');
@@ -300,7 +302,7 @@ $('#daytable').innerHTML = `<thead><tr><th class="l">Day</th><th>Tmax / Tmin °F
   s += `<path d="${path('AWD')}" fill="none" stroke="var(--water)" stroke-width="2"/>`;
   se.forEach(x => { if (x.I > 0) s += `<line x1="${xs(x.j)}" x2="${xs(x.j)}" y1="${bot+4}" y2="${bot+14}" stroke="var(--accent)" stroke-width="2"/>`; if (x.P >= 0.5) s += `<circle cx="${xs(x.j)}" cy="${bot+22}" r="${Math.min(6, 1.5 + x.P*2)}" fill="var(--water)" opacity=".7"/>`; });
   for (let m = 4; m <= 10; m++) { const j = Math.round((Date.UTC(D.year, m, 1) - Date.UTC(D.year,0,1)) / 864e5) + 1; if (j > j0 && j < j1) s += `<text x="${xs(j)}" y="${bot+40}" font-size="11" text-anchor="middle" fill="var(--muted)">${MON[m]} 1</text>`; }
-  s += `<text x="${W-R}" y="${top-4}" font-size="11" text-anchor="end" fill="var(--water)">depletion</text><text x="${W-R}" y="${top+10}" font-size="11" text-anchor="end" fill="var(--heat)">allowed depletion</text>`;
+  s += `<text x="${W-R-4}" y="${top+14}" font-size="11" text-anchor="end" fill="var(--water)">depletion</text><text x="${W-R-4}" y="${top+28}" font-size="11" text-anchor="end" fill="var(--heat)">allowed depletion</text>`;
   const svg = $('#seasonchart'); svg.setAttribute('viewBox', `0 0 ${W} ${bot + 48}`); svg.innerHTML = s;
 })();
 
