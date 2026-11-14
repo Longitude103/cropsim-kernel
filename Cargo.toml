@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = ["rust/mf6"]
+default-members = ["rust/mf6"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.82"
+publish = false
