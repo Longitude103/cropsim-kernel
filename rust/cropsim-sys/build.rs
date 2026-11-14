@@ -172,14 +172,17 @@ fn link_runtime(lib_dir: &Path, fc: &str, target: &str) {
     if !target.contains("windows") {
         println!("cargo:rustc-link-lib=dylib=m");
     }
-    if target.contains("apple") {
-        // libgfortran.a needs libgcc's unwinder symbols on macOS.
-        if let Some(p) = find_archive(lib_dir, fc, "libgcc.a") {
-            println!(
-                "cargo:rustc-link-search=native={}",
-                p.parent().unwrap().display()
-            );
-            println!("cargo:rustc-link-lib=static=gcc");
+    if target.contains("apple") && !dynamic {
+        // On macOS, GCC's libgfortran.a uses emulated thread-local storage
+        // (___emutls_get_address, in libemutls_w.a) and libgcc helpers.
+        for (archive, lib) in [("libemutls_w.a", "emutls_w"), ("libgcc.a", "gcc")] {
+            if let Some(p) = find_archive(lib_dir, fc, archive) {
+                println!(
+                    "cargo:rustc-link-search=native={}",
+                    p.parent().unwrap().display()
+                );
+                println!("cargo:rustc-link-lib=static={lib}");
+            }
         }
     }
 }

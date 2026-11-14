@@ -22,11 +22,12 @@ for f in csk_types csk_physics csk_balance csk_kernel csk_capi; do
 done
 rm -f "$out/libcropsim_kernel.a"
 ar crs "$out/libcropsim_kernel.a" "$obj"/*.o
-for lib in libgfortran.a libquadmath.a libgcc.a; do
+for lib in libgfortran.a libquadmath.a libgcc.a libemutls_w.a; do
+  # libgcc.a and libemutls_w.a are only needed on macOS (GCC's emulated
+  # thread-local storage and helpers used by libgfortran.a).
+  case "$lib" in libgcc.a|libemutls_w.a) [ "$(uname)" = Darwin ] || continue ;; esac
   p=$("$fc" -print-file-name=$lib)
   if [ -f "$p" ]; then
-    # libgcc.a is only needed on macOS (libgfortran's unwinder symbols).
-    if [ "$lib" = libgcc.a ] && [ "$(uname)" != Darwin ]; then continue; fi
     cp "$p" "$out/"
   fi
 done
