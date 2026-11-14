@@ -1,6 +1,6 @@
 name: Rust
 
-# The Rust parcel layer: kernel binding, pbm-core, the pbm command line and
+# The Rust parcel layer (the mf6 crate has its own job in ci.yml): kernel binding, pbm-core, the pbm command line and
 # the Python module pbm. Also builds the precompiled kernel bundle per
 # platform, and proves a build from the bundle needs no Fortran compiler.
 on:
@@ -27,11 +27,11 @@ jobs:
         with:
           components: clippy, rustfmt
       - name: Format
-        run: cargo fmt --all --check
+        run: cargo fmt -p cropsim-sys -p cropsim -p pbm-core -p pbm-cli -p pbm-py --check
       - name: Tests (kernel parity with the pinned original, example parcel run)
-        run: cargo test --release
+        run: cargo test --release -p cropsim-sys -p cropsim -p pbm-core -p pbm-cli
       - name: Clippy
-        run: cargo clippy --release -- -D warnings
+        run: cargo clippy --release --all-targets -p cropsim-sys -p cropsim -p pbm-core -p pbm-cli -- -D warnings
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

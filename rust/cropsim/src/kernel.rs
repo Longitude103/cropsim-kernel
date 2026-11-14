@@ -61,10 +61,15 @@ impl Kernel {
                 p.cn[g][crop] = block.cn[crop][g];
             }
         }
-        [p.sftmp, p.smfmx, p.smfmn, p.snocovmx, p.snocov1, p.snocov2, p.timp] = block.snow;
+        [
+            p.sftmp, p.smfmx, p.smfmn, p.snocovmx, p.snocov1, p.snocov2, p.timp,
+        ] = block.snow;
         for row in tillage {
             if !(1..=80).contains(&row.code) {
-                return Err(Error::Input(format!("tillage code {} is outside 1-80", row.code)));
+                return Err(Error::Input(format!(
+                    "tillage code {} is outside 1-80",
+                    row.code
+                )));
             }
             p.tilfac[0][row.code as usize - 1] = row.factor1;
             p.tilfac[1][row.code as usize - 1] = row.factor2;
@@ -116,8 +121,18 @@ impl Kernel {
         // SAFETY: every pointer is to a live, properly laid out struct
         // (checked against csk_struct_size in cropsim-sys); the kernel only
         // reads the inputs and writes the two outputs.
-        let status =
-            unsafe { sys::csk_run_year(&*self.params, &*s, &so, &*w, &st, &o, &mut out_state, &mut *raw) };
+        let status = unsafe {
+            sys::csk_run_year(
+                &*self.params,
+                &*s,
+                &so,
+                &*w,
+                &st,
+                &o,
+                &mut out_state,
+                &mut *raw,
+            )
+        };
         Ok(YearResult {
             year: weather.year,
             crop: sim.crop,
@@ -219,11 +234,21 @@ fn soil_struct(s: &Soil) -> sys::csk_soil_t {
 fn weather_struct(w: &Weather) -> Result<Box<sys::csk_weather_t>, Error> {
     let n = w.days();
     if !(1..=366).contains(&n) {
-        return Err(Error::Input(format!("weather must have 1 to 366 days, got {n}")));
+        return Err(Error::Input(format!(
+            "weather must have 1 to 366 days, got {n}"
+        )));
     }
-    for (name, v) in [("tmin", &w.tmin), ("precip", &w.precip), ("epan", &w.epan), ("etr", &w.etr)] {
+    for (name, v) in [
+        ("tmin", &w.tmin),
+        ("precip", &w.precip),
+        ("epan", &w.epan),
+        ("etr", &w.etr),
+    ] {
         if v.len() != n {
-            return Err(Error::Input(format!("weather.{name} has {} days, tmax has {n}", v.len())));
+            return Err(Error::Input(format!(
+                "weather.{name} has {} days, tmax has {n}",
+                v.len()
+            )));
         }
     }
     let mut t = sys::zeroed_box::<sys::csk_weather_t>();

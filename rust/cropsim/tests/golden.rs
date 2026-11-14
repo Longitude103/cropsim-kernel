@@ -30,7 +30,12 @@ fn matches_golden_original() {
     let soils = legacy::read_soils(fx.join("NESOILS.DAT")).unwrap();
     let initial = legacy::read_initial(fx.join("INITIAL.DAT")).unwrap();
     let weather: HashMap<i32, _> = (2009..=2014)
-        .map(|y| (y, legacy::read_weather(fx.join(format!("wea/TEST{y}.WEA")), None).unwrap()))
+        .map(|y| {
+            (
+                y,
+                legacy::read_weather(fx.join(format!("wea/TEST{y}.WEA")), None).unwrap(),
+            )
+        })
         .collect();
     let sim = |n: &str| legacy::read_sim(fx.join(format!("sim/{n}.SIM"))).unwrap();
 
@@ -56,7 +61,9 @@ fn matches_golden_original() {
     ];
     known.alpha1 = 0.0;
     known.sim_airdry = [0.04, 0.07];
-    known.sim_fieldc = [0.305, 0.315, 0.325, 0.305, 0.315, 0.325, 0.305, 0.315, 0.325, 0.305];
+    known.sim_fieldc = [
+        0.305, 0.315, 0.325, 0.305, 0.315, 0.325, 0.305, 0.315, 0.325, 0.305,
+    ];
     known.sim_pwp = [0.18, 0.19, 0.2, 0.18, 0.19, 0.2, 0.18, 0.19, 0.2, 0.18];
     known.sim_bulkd = 1.4;
     scenarios.push(("corn_known_dates", known));
@@ -66,16 +73,30 @@ fn matches_golden_original() {
     let golden: HashMap<(String, i32, i32), csv::StringRecord> = rdr
         .records()
         .map(|r| r.unwrap())
-        .map(|r| ((r[0].to_string(), r[1].parse().unwrap(), r[2].parse().unwrap()), r))
+        .map(|r| {
+            (
+                (
+                    r[0].to_string(),
+                    r[1].parse().unwrap(),
+                    r[2].parse().unwrap(),
+                ),
+                r,
+            )
+        })
         .collect();
 
-    let opts = RunOptions { fixes: Fix::ORIGINAL, ..RunOptions::default() };
+    let opts = RunOptions {
+        fixes: Fix::ORIGINAL,
+        ..RunOptions::default()
+    };
     let mut checked = 0;
     for (name, sim) in &scenarios {
         for soil in [421, 622, 832] {
             let mut state = initial.clone();
             for year in 2009..=2014 {
-                let r = kernel.run_year_status(sim, &soils[&soil], &weather[&year], &state, &opts).unwrap();
+                let r = kernel
+                    .run_year_status(sim, &soils[&soil], &weather[&year], &state, &opts)
+                    .unwrap();
                 let g = &golden[&(name.to_string(), soil, year)];
                 let a = r.annual();
                 let s = &r.state;
@@ -111,15 +132,22 @@ fn matches_golden_original() {
                     ("snotmp", s.snotmp as f64),
                     ("snoh2o", s.snoh2o as f64),
                 ]);
-                let names: Vec<String> =
-                    (1..=10).flat_map(|k| [format!("theta{k}"), format!("soilt{k}")]).collect();
+                let names: Vec<String> = (1..=10)
+                    .flat_map(|k| [format!("theta{k}"), format!("soilt{k}")])
+                    .collect();
                 for k in 0..10 {
                     values.insert(&names[2 * k], s.theta[k] as f64);
                     values.insert(&names[2 * k + 1], s.soilt[k] as f64);
                 }
                 for (i, h) in headers.iter().enumerate().skip(3) {
-                    let v = values.get(h).unwrap_or_else(|| panic!("golden column {h} not checked"));
-                    assert!(same(&g[i], *v), "{name} soil {soil} {year}: {h} golden {} rust {v}", &g[i]);
+                    let v = values
+                        .get(h)
+                        .unwrap_or_else(|| panic!("golden column {h} not checked"));
+                    assert!(
+                        same(&g[i], *v),
+                        "{name} soil {soil} {year}: {h} golden {} rust {v}",
+                        &g[i]
+                    );
                 }
                 checked += 1;
                 state = r.state.clone();
@@ -141,10 +169,18 @@ fn runs_on_many_threads() {
     let sim = legacy::read_sim(fx.join("sim/CRNIRR01.SIM")).unwrap();
     let state = legacy::read_initial(fx.join("INITIAL.DAT")).unwrap();
     let w = legacy::read_weather(fx.join("wea/TEST2012.WEA"), None).unwrap();
-    let one = kernel.run_year(&sim, &soil, &w, &state, &RunOptions::default()).unwrap();
+    let one = kernel
+        .run_year(&sim, &soil, &w, &state, &RunOptions::default())
+        .unwrap();
     std::thread::scope(|sc| {
         let hs: Vec<_> = (0..8)
-            .map(|_| sc.spawn(|| kernel.run_year(&sim, &soil, &w, &state, &RunOptions::default()).unwrap()))
+            .map(|_| {
+                sc.spawn(|| {
+                    kernel
+                        .run_year(&sim, &soil, &w, &state, &RunOptions::default())
+                        .unwrap()
+                })
+            })
             .collect();
         for h in hs {
             let r = h.join().unwrap();

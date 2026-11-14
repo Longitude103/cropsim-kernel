@@ -298,7 +298,10 @@ mod tests {
         ];
         for (which, rust) in sizes {
             let fortran = unsafe { csk_struct_size(which) } as usize;
-            assert_eq!(rust, fortran, "struct {which}: Rust {rust} bytes, kernel {fortran}");
+            assert_eq!(
+                rust, fortran,
+                "struct {which}: Rust {rust} bytes, kernel {fortran}"
+            );
         }
     }
 }

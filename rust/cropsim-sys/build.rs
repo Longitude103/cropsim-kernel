@@ -25,8 +25,13 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const SOURCES: [&str; 5] =
-    ["csk_types.f90", "csk_physics.f90", "csk_balance.f90", "csk_kernel.f90", "csk_capi.f90"];
+const SOURCES: [&str; 5] = [
+    "csk_types.f90",
+    "csk_physics.f90",
+    "csk_balance.f90",
+    "csk_kernel.f90",
+    "csk_capi.f90",
+];
 
 fn main() {
     println!("cargo:rerun-if-env-changed=CROPSIM_KERNEL_LIB_DIR");
@@ -34,15 +39,21 @@ fn main() {
     let manifest = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let target = env::var("TARGET").unwrap();
 
-    let prebuilt = env::var_os("CROPSIM_KERNEL_LIB_DIR").map(PathBuf::from).or_else(|| {
-        let p = manifest.join("prebuilt").join(&target);
-        p.join("libcropsim_kernel.a").exists().then_some(p)
-    });
+    let prebuilt = env::var_os("CROPSIM_KERNEL_LIB_DIR")
+        .map(PathBuf::from)
+        .or_else(|| {
+            let p = manifest.join("prebuilt").join(&target);
+            p.join("libcropsim_kernel.a").exists().then_some(p)
+        });
 
     let fc = env::var("FC").unwrap_or_else(|_| "gfortran".into());
     let lib_dir = match prebuilt {
         Some(dir) => {
-            assert!(dir.join("libcropsim_kernel.a").exists(), "no libcropsim_kernel.a in {}", dir.display());
+            assert!(
+                dir.join("libcropsim_kernel.a").exists(),
+                "no libcropsim_kernel.a in {}",
+                dir.display()
+            );
             println!("cargo:rustc-env=CROPSIM_KERNEL_SOURCE=prebuilt");
             dir
         }
@@ -78,7 +89,14 @@ fn compile(manifest: &Path, fc: &str) -> PathBuf {
         println!("cargo:rerun-if-changed={}", path.display());
         let obj = objs.join(name.replace(".f90", ".o"));
         let status = Command::new(fc)
-            .args(["-c", "-O2", "-std=f2018", "-frecursive", "-ffp-contract=off", "-fPIC"])
+            .args([
+                "-c",
+                "-O2",
+                "-std=f2018",
+                "-frecursive",
+                "-ffp-contract=off",
+                "-fPIC",
+            ])
             .arg("-J")
             .arg(&objs)
             .arg(&path)
@@ -98,7 +116,12 @@ fn compile(manifest: &Path, fc: &str) -> PathBuf {
     let lib = out.join("libcropsim_kernel.a");
     let _ = std::fs::remove_file(&lib);
     let ar = env::var("AR").unwrap_or_else(|_| "ar".into());
-    let status = Command::new(&ar).arg("crs").arg(&lib).args(&objects).status().expect("could not run ar");
+    let status = Command::new(&ar)
+        .arg("crs")
+        .arg(&lib)
+        .args(&objects)
+        .status()
+        .expect("could not run ar");
     assert!(status.success(), "ar failed");
     out
 }
@@ -109,7 +132,10 @@ fn find_archive(lib_dir: &Path, fc: &str, name: &str) -> Option<PathBuf> {
     if local.exists() {
         return Some(local);
     }
-    let out = Command::new(fc).arg(format!("-print-file-name={name}")).output().ok()?;
+    let out = Command::new(fc)
+        .arg(format!("-print-file-name={name}"))
+        .output()
+        .ok()?;
     let p = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
     (p.is_absolute() && p.exists()).then_some(p)
 }
@@ -120,7 +146,10 @@ fn link_runtime(lib_dir: &Path, fc: &str, target: &str) {
         if dynamic {
             if lib == "gfortran" {
                 if let Some(p) = find_archive(lib_dir, fc, "libgfortran.so") {
-                    println!("cargo:rustc-link-search=native={}", p.parent().unwrap().display());
+                    println!(
+                        "cargo:rustc-link-search=native={}",
+                        p.parent().unwrap().display()
+                    );
                 }
                 println!("cargo:rustc-link-lib=dylib=gfortran");
             }
@@ -128,7 +157,10 @@ fn link_runtime(lib_dir: &Path, fc: &str, target: &str) {
         }
         match find_archive(lib_dir, fc, archive) {
             Some(p) => {
-                println!("cargo:rustc-link-search=native={}", p.parent().unwrap().display());
+                println!(
+                    "cargo:rustc-link-search=native={}",
+                    p.parent().unwrap().display()
+                );
                 println!("cargo:rustc-link-lib=static={lib}");
             }
             // No static archive: fall back to the shared runtime for
@@ -143,7 +175,10 @@ fn link_runtime(lib_dir: &Path, fc: &str, target: &str) {
     if target.contains("apple") {
         // libgfortran.a needs libgcc's unwinder symbols on macOS.
         if let Some(p) = find_archive(lib_dir, fc, "libgcc.a") {
-            println!("cargo:rustc-link-search=native={}", p.parent().unwrap().display());
+            println!(
+                "cargo:rustc-link-search=native={}",
+                p.parent().unwrap().display()
+            );
             println!("cargo:rustc-link-lib=static=gcc");
         }
     }

@@ -17,17 +17,20 @@ use crate::Error;
 
 /// Drainage values the original looked up by soil code (DCOFSOIL, DDAYSOIL).
 const SOIL_CODES: [i32; 28] = [
-    411, 412, 421, 422, 431, 432, 442, 512, 521, 522, 532, 542, 612, 621, 622, 631, 632, 642, 721, 722, 731,
-    732, 821, 822, 831, 832, 921, 922,
+    411, 412, 421, 422, 431, 432, 442, 512, 521, 522, 532, 542, 612, 621, 622, 631, 632, 642, 721,
+    722, 731, 732, 821, 822, 831, 832, 921, 922,
 ];
 const DRAIN_DAYS: [f32; 28] = [
-    2.0, 2.0, 2.0, 2.0, 4.0, 4.0, 6.0, 2.0, 2.0, 2.0, 4.0, 6.0, 3.0, 3.0, 3.0, 4.0, 4.0, 6.0, 3.0, 3.0, 4.0,
-    4.0, 4.0, 4.0, 6.0, 6.0, 4.0, 4.0,
+    2.0, 2.0, 2.0, 2.0, 4.0, 4.0, 6.0, 2.0, 2.0, 2.0, 4.0, 6.0, 3.0, 3.0, 3.0, 4.0, 4.0, 6.0, 3.0,
+    3.0, 4.0, 4.0, 4.0, 4.0, 6.0, 6.0, 4.0, 4.0,
 ];
 const DRAIN_COEFF: f32 = 0.50;
 
 fn read_text(path: &Path) -> Result<String, Error> {
-    let bytes = std::fs::read(path).map_err(|e| Error::Io { path: path.display().to_string(), source: e })?;
+    let bytes = std::fs::read(path).map_err(|e| Error::Io {
+        path: path.display().to_string(),
+        source: e,
+    })?;
     // The old files are Latin-1 at worst; every number is ASCII.
     Ok(bytes.iter().map(|&b| b as char).collect())
 }
@@ -41,11 +44,18 @@ pub struct ListReader {
 
 impl ListReader {
     pub fn new(text: &str, path: &str) -> ListReader {
-        ListReader { lines: text.lines().map(str::to_owned).collect(), pos: 0, path: path.into() }
+        ListReader {
+            lines: text.lines().map(str::to_owned).collect(),
+            pos: 0,
+            path: path.into(),
+        }
     }
 
     fn err(&self, message: impl Into<String>) -> Error {
-        Error::Parse { path: self.path.clone(), message: message.into() }
+        Error::Parse {
+            path: self.path.clone(),
+            message: message.into(),
+        }
     }
 
     pub fn skip(&mut self, n: usize) {
@@ -83,7 +93,8 @@ impl ListReader {
     }
 
     fn num(&self, v: &str) -> Result<f64, Error> {
-        v.parse::<f64>().map_err(|_| self.err(format!("not a number: {v:?}")))
+        v.parse::<f64>()
+            .map_err(|_| self.err(format!("not a number: {v:?}")))
     }
 
     pub fn floats(&mut self, n: usize) -> Result<Vec<f32>, Error> {
@@ -105,7 +116,9 @@ impl ListReader {
     }
 
     pub fn at_end(&self) -> bool {
-        self.lines[self.pos.min(self.lines.len())..].iter().all(|l| l.trim().is_empty())
+        self.lines[self.pos.min(self.lines.len())..]
+            .iter()
+            .all(|l| l.trim().is_empty())
     }
 }
 
@@ -136,14 +149,23 @@ fn fixed_int(field: &str) -> i32 {
 
 /// Characters `a..b` of a line, padded with blanks.
 fn cols(line: &str, a: usize, b: usize) -> String {
-    line.chars().chain(std::iter::repeat(' ')).skip(a).take(b - a).collect()
+    line.chars()
+        .chain(std::iter::repeat(' '))
+        .skip(a)
+        .take(b - a)
+        .collect()
 }
 
 pub fn read_block(path: impl AsRef<Path>) -> Result<Block, Error> {
     let path = path.as_ref();
     let mut r = ListReader::new(&read_text(path)?, &path.display().to_string());
     let v = r.read(3)?;
-    let mut b = Block { etrfact: r.f(&v[0])?, nfday: r.i(&v[1])?, ytrend: r.i(&v[2])?, ..Block::default() };
+    let mut b = Block {
+        etrfact: r.f(&v[0])?,
+        nfday: r.i(&v[1])?,
+        ytrend: r.i(&v[2])?,
+        ..Block::default()
+    };
     b.depth = arr(r.floats(10)?);
     b.ydens = arr(r.floats(22)?);
     b.resrat = arr(r.floats(22)?);
@@ -203,7 +225,10 @@ pub fn read_soils(path: impl AsRef<Path>) -> Result<BTreeMap<i32, Soil>, Error> 
             pwp: v[13..23].try_into().unwrap(),
             airdry: v[23..25].try_into().unwrap(),
             drncoe: DRAIN_COEFF,
-            drnday: SOIL_CODES.iter().position(|&c| c == code).map_or(2.0, |k| DRAIN_DAYS[k]),
+            drnday: SOIL_CODES
+                .iter()
+                .position(|&c| c == code)
+                .map_or(2.0, |k| DRAIN_DAYS[k]),
         });
     }
     Ok(soils)
@@ -227,7 +252,8 @@ pub fn read_sim_after(path: impl AsRef<Path>, previous: Option<&Sim>) -> Result<
     (s.implt, s.idplt, s.imbg, s.idbg, s.imend, s.idend) = (v[0], v[1], v[2], v[3], v[4], v[5]);
     if s.crop < 10 {
         let v = r.floats(6)?;
-        (s.gddveg, s.gddflo, s.gddripe, s.gyform, s.gddefc, s.gddmat) = (v[0], v[1], v[2], v[3], v[4], v[5]);
+        (s.gddveg, s.gddflo, s.gddripe, s.gyform, s.gddefc, s.gddmat) =
+            (v[0], v[1], v[2], v[3], v[4], v[5]);
     }
     if s.crop == 10 || s.crop == 11 {
         let v = r.ints(6)?;
@@ -247,7 +273,9 @@ pub fn read_sim_after(path: impl AsRef<Path>, previous: Option<&Sim>) -> Result<
     let v = r.ints(2)?;
     let ntills = v[0].max(0) as usize;
     s.itflag = v[1];
-    s.tillage_ops = (0..ntills).map(|_| r.ints(3).map(|t| (t[0], t[1], t[2]))).collect::<Result<_, _>>()?;
+    s.tillage_ops = (0..ntills)
+        .map(|_| r.ints(3).map(|t| (t[0], t[1], t[2])))
+        .collect::<Result<_, _>>()?;
     let v = r.read(6)?;
     s.irrtyp = r.i(&v[0])?;
     for k in 0..5 {
@@ -315,7 +343,8 @@ fn read_rotation(r: &mut ListReader, s: &mut Sim) -> Result<(), Error> {
     let forage = (10..=13).contains(&s.crop);
     let full = |r: &mut ListReader, s: &mut Sim| -> Result<(), Error> {
         let v = r.read(4)?;
-        (s.jstopi, s.jgoi, s.jdfreq, s.ddepth) = (r.i(&v[0])?, r.i(&v[1])?, r.i(&v[2])?, r.f(&v[3])?);
+        (s.jstopi, s.jgoi, s.jdfreq, s.ddepth) =
+            (r.i(&v[0])?, r.i(&v[1])?, r.i(&v[2])?, r.f(&v[3])?);
         Ok(())
     };
     let short = |r: &mut ListReader, s: &mut Sim| -> Result<(), Error> {
@@ -351,7 +380,10 @@ pub fn read_weather(path: impl AsRef<Path>, year: Option<i32>) -> Result<Weather
     let path = path.as_ref();
     let text = read_text(path)?;
     let lines: Vec<&str> = text.lines().collect();
-    let perr = |m: &str| Error::Parse { path: path.display().to_string(), message: m.into() };
+    let perr = |m: &str| Error::Parse {
+        path: path.display().to_string(),
+        message: m.into(),
+    };
     let head = lines.get(1).ok_or_else(|| perr("missing header line"))?;
     // FORMAT(2I3,I6,7X,F7.2,8X,F8.2,12X,F8.0)
     let imstr = fixed_int(&cols(head, 0, 3));

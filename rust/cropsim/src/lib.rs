@@ -47,7 +47,10 @@ pub const KERNEL_SOURCE: &str = cropsim_sys::KERNEL_SOURCE;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("{path}: {source}")]
-    Io { path: String, source: std::io::Error },
+    Io {
+        path: String,
+        source: std::io::Error,
+    },
     #[error("{path}: {message}")]
     Parse { path: String, message: String },
     #[error("invalid input: {0}")]
