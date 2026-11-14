@@ -23,6 +23,8 @@ each known bug fixable by its own switch (`docs/kernel/`). The Python package
 | `src/cropsim/` | Python package: ctypes binding, input/result objects, readers for the old input files. |
 | `tests/` | Parity test against the original program, kernel golden and bug-fix tests. |
 | `tests/golden/original.csv` | Original model results for 648 test-parcel runs (`tools/make_golden.py`). |
+| `rust/` | The parcel layer in Rust: kernel binding (`cropsim-sys`, `cropsim`), parcel runs (`pbm-core`), the `pbm` command line and the `pbm` Python module. See `docs/parcel-layer/`. |
+| `examples/parcel-run/` | A small parcel run on the test fixtures: five parcels, six years, a shared meter, surface water. |
 
 ## Using it
 
@@ -86,6 +88,22 @@ them. This is the applied-water pass of the two-pass irrigation design.
 The Fortran engine keeps its working values in module variables, so one
 process runs one year at a time. Use processes (for example
 `multiprocessing`), not threads, to run in parallel.
+
+## Parcel runs (Rust)
+
+The parcel layer (two-pass irrigation, meter allocation, soil components,
+Parquet outputs, groundwater fluxes) is a Rust crate next to the kernel.
+The `pbm` command line, the `pbm` Python module and the desktop app all run
+it. See `docs/parcel-layer/README.md`.
+
+```bash
+cargo run --release -p pbm-cli -- run examples/parcel-run/run.toml --pretty
+```
+
+```python
+import pbm                      # cd rust/pbm-py && maturin develop --release
+summary = pbm.run("examples/parcel-run/run.toml", threads=8)
+```
 
 ## Building
 
