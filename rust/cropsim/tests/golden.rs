@@ -2,7 +2,7 @@
 //! (tests/golden/original.csv, made by the Python package from the same
 //! kernel with every fix reverted). Every scenario that is a fixture SIM
 //! file as-is, plus known irrigation dates, on all three soils for six
-//! years: every value must match bit for bit, which checks the struct
+//! years: every value must match bit for bit on x86-64, which checks the struct
 //! layout, the readers and the state carryover together.
 
 use std::collections::HashMap;
@@ -14,9 +14,19 @@ fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
 }
 
+/// Exact on x86-64, where the golden file was made; elsewhere the math
+/// library's sin/exp can differ in the last bit, so within float rounding
+/// (the same rule as the Python test, tests/test_kernel.py).
 fn same(golden: &str, value: f64) -> bool {
     let g: f64 = golden.parse().unwrap();
-    (g.is_nan() && value.is_nan()) || g == value
+    if g.is_nan() || value.is_nan() {
+        return g.is_nan() && value.is_nan();
+    }
+    if cfg!(target_arch = "x86_64") {
+        g == value
+    } else {
+        (g - value).abs() <= 1e-4 + 1e-4 * g.abs()
+    }
 }
 
 #[test]
