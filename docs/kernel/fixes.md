@@ -14,7 +14,9 @@ original behaviour, so every change can be measured against the original:
 Each fix has a test in `tests/test_fixes.py` that shows the original
 behaviour with the fix off and the corrected behaviour with it on. How
 much each fix moves deep percolation, ET, net irrigation and runoff on the
-test parcels is in [fix-impact.md](fix-impact.md).
+test parcels is in [fix-impact.md](fix-impact.md). How much each fix moves results on realistic
+Nebraska Panhandle parcels with real Scottsbluff weather is in
+[../validation/kernel-validation.md](../validation/kernel-validation.md).
 
 Line numbers refer to `fortran/original/CROPSIM_V8.0.F90`.
 
