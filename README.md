@@ -19,6 +19,7 @@ each known bug fixable by its own switch (`docs/kernel/`). The Python package
 | `fortran/src/cropsim_api.f90` | C-callable driver for the reference engine: `cs_set_block`, `cs_set_tillage`, `cs_run_year`. |
 | `fortran/kernel/` | The compute kernel (`csk_run_year`) and its C header. See `docs/kernel/README.md`. |
 | `docs/kernel/` | Kernel design, bug-fix switches and how much each fix changes results. |
+| `tools/validation/`, `docs/validation/` | Kernel validation on Scottsbluff test parcels and the model change report (what each fix changes on realistic inputs). |
 | `src/cropsim/` | Python package: ctypes binding, input/result objects, readers for the old input files. |
 | `tests/` | Parity test against the original program, kernel golden and bug-fix tests. |
 | `tests/golden/original.csv` | Original model results for 648 test-parcel runs (`tools/make_golden.py`). |
