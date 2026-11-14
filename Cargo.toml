@@ -1,0 +1,28 @@
+[workspace]
+resolver = "2"
+members = [
+  "rust/cropsim-sys",
+  "rust/cropsim",
+  "rust/pbm-core",
+  "rust/pbm-cli",
+  "rust/pbm-py",
+]
+# pbm-py is a Python extension module; build it with maturin, not cargo test.
+default-members = [
+  "rust/cropsim-sys",
+  "rust/cropsim",
+  "rust/pbm-core",
+  "rust/pbm-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-Proprietary"
+authors = ["Longitude 103"]
+repository = "https://github.com/Longitude103/Parcel-Based-Modeling"
+rust-version = "1.82"
+publish = false
+
+[profile.release]
+lto = "thin"

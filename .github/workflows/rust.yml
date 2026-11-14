@@ -1,0 +1,85 @@
+name: Rust
+
+# The Rust parcel layer: kernel binding, pbm-core, the pbm command line and
+# the Python module pbm. Also builds the precompiled kernel bundle per
+# platform, and proves a build from the bundle needs no Fortran compiler.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: gcc
+          version: 13
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Format
+        run: cargo fmt --all --check
+      - name: Tests (kernel parity with the pinned original, example parcel run)
+        run: cargo test --release
+      - name: Clippy
+        run: cargo clippy --release -- -D warnings
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Python module (maturin) and its tests
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install maturin pytest pyarrow
+          cd rust/pbm-py && maturin develop --release && cd ../..
+          cargo build --release -p pbm-cli
+          pytest -v rust/pbm-py/tests
+
+  kernel-bundle:
+    name: Kernel bundle (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: gcc
+          version: 13
+      - name: Build the precompiled kernel
+        run: tools/kernel_bundle.sh kernel-bundle
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cropsim-kernel-${{ runner.os }}-${{ runner.arch }}
+          path: kernel-bundle/
+
+  from-bundle:
+    name: Build from bundle, no Fortran compiler (${{ matrix.os }})
+    needs: kernel-bundle
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: cropsim-kernel-${{ runner.os }}-${{ runner.arch }}
+          path: kernel-bundle
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test with the precompiled kernel (FC points at a command that fails)
+        env:
+          FC: "false"
+        run: CROPSIM_KERNEL_LIB_DIR="$PWD/kernel-bundle" cargo test --release -p cropsim -p pbm-core

@@ -10,3 +10,5 @@ wheelhouse/
 *.mod
 .venv/
 .pytest_cache/
+target/
+examples/parcel-run/out/
