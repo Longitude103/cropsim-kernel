@@ -418,6 +418,7 @@ dependencies = [
  "cropsim-sys",
  "csv",
  "serde",
+ "serde_json",
  "thiserror",
 ]
 

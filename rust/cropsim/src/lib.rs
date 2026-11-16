@@ -31,7 +31,7 @@ pub mod legacy;
 mod model;
 
 pub use fix::Fix;
-pub use kernel::{Annual, Daily, Kernel, Monthly, RunOptions, YearResult};
+pub use kernel::{Annual, Daily, EtMethod, Kernel, Monthly, RunOptions, YearResult};
 pub use model::{Block, Sim, Soil, State, Tillage, Weather, CROP_NAMES};
 
 /// Kernel interface version (`CSK_API_VERSION`).

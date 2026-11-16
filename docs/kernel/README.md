@@ -50,6 +50,10 @@ int32_t csk_run_year(const csk_params_t *params, const csk_sim_t *sim,
 * `state_in` / `state_out`: carryover for this soil on this parcel.
 * `options.revert`: bug fixes to turn off (`docs/kernel/fixes.md`). 0, a
   zeroed struct, runs every fix; `CSK_REVERT_ALL` reproduces the original.
+* `options.et_method`: how potential ET is split into evaporation and
+  transpiration: `CSK_ET_ORIGINAL` (0, the default) or `CSK_ET_FAO56_DUAL`
+  (1, FAO-56 dual crop coefficient, [dual-kc.md](dual-kc.md)). Added in
+  API version 3; the field was reserved (0) before.
 * `result`: annual, monthly, weekly and daily values, the water balance
   error and a status code.
 
@@ -132,7 +136,7 @@ Most of CropSim's methods date from the 1980s and 1990s (curve-number
 runoff, a tipping-bucket soil profile, crop coefficient curves). A
 follow-up is to add newer methods as options next to the original ones,
 for example a Richards-equation soil column in the style of HYDRUS-1D for
-the soil water balance, FAO-56 dual crop coefficients, or Green-Ampt
-infiltration. The kernel's layout (one routine per process, all state in
+the soil water balance, or Green-Ampt infiltration. The first one is in:
+FAO-56 dual crop coefficients (`et_method`, [dual-kc.md](dual-kc.md)). The kernel's layout (one routine per process, all state in
 `csk_work_t`) is meant to make that a matter of adding a routine and a
 switch.

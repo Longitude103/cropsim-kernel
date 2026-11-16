@@ -27,7 +27,7 @@ module csk_types
   integer, parameter, public :: NEVENT = 50      ! known irrigation events
   integer, parameter, public :: NTILL = 20       ! tillage operations
 
-  integer(c_int), parameter, public :: CSK_API_VERSION = 2
+  integer(c_int), parameter, public :: CSK_API_VERSION = 3
 
   ! ---- Status codes (1-4 are the original program's STOP checks) ----
   integer(c_int), parameter, public :: CSK_OK             = 0
@@ -36,6 +36,23 @@ module csk_types
   integer(c_int), parameter, public :: CSK_ERR_TRANS_CONV = 3
   integer(c_int), parameter, public :: CSK_ERR_NEG_RUNOFF = 4
   integer(c_int), parameter, public :: CSK_ERR_BAD_INPUT  = 11
+
+  ! How potential ET is split into soil evaporation and transpiration
+  ! (csk_options_t%et_method). A method choice, not a bug fix: the
+  ! original split stays the default.
+  !   CSK_ET_ORIGINAL: CropSim's own split. Potential evaporation
+  !     ETr*(KCU+KCL-KC), two-stage (Ritchie) drying of layers 1-2,
+  !     potential transpiration ETr*(KC-KCL) raised by unused evaporation.
+  !   CSK_ET_FAO56_DUAL: FAO-56 dual crop coefficient (Allen et al.
+  !     1998, ch. 7; Allen et al. 2005). The crop's daily KC curve is the
+  !     basal coefficient KCB (the Wright 1982 and Watts/Stegman curves
+  !     are basal, alfalfa-reference curves); T = Ks*KCB*ETr through the
+  !     usual root uptake, E = KE*ETr with KE = min(KR*(KCMAX-KCB),
+  !     FEW*KCMAX) from a daily depletion balance of the 4-inch surface
+  !     layer (TEW, REW), the exposed and wetted fraction FEW, and the
+  !     residue reduction the original applies to evaporation.
+  integer(c_int), parameter, public :: CSK_ET_ORIGINAL   = 0
+  integer(c_int), parameter, public :: CSK_ET_FAO56_DUAL = 1
 
   ! ---- Bug-fix switches (bits of options%revert) ----
   ! Bits are added one per fix; see docs/kernel/fixes.md. All fixes are
@@ -171,7 +188,7 @@ module csk_types
     integer(c_int) :: revert         ! FIX_* bits to turn off (0: all fixes on)
     integer(c_int) :: livecond       ! 1: original LIVECOND rule applies
     integer(c_int) :: legacy_round   ! 1: round state like INITIAL.DAT
-    integer(c_int) :: reserved
+    integer(c_int) :: et_method      ! CSK_ET_* (0: original split)
   end type csk_options_t
 
   ! ------------------------------------------------------------------
@@ -220,6 +237,7 @@ module csk_types
   type, public :: csk_work_t
     integer :: fixes = 0
     integer :: status = 0
+    integer :: et_method = 0
     ! parameters
     real    :: etrfact = 0.
     integer :: nfday = 0, ytrend = 0
@@ -286,6 +304,10 @@ module csk_types
     real    :: dpln = 0., awdpln = 0., dpla = 0., totwat = 0.
     real    :: curvno = 0.
     real    :: wetsup = 0.
+    ! FAO-56 dual crop coefficient (et_method = CSK_ET_FAO56_DUAL):
+    ! basal coefficient, evaporation coefficient, surface-layer depletion
+    ! of the exposed wetted fraction (in) and the fraction last wetted.
+    real    :: kcb = 0., ke = 0., de = 0., fw = 1.
     ! seasonal totals
     real    :: drains = 0., eprecips = 0., es = 0., etmax = 0., etrs = 0., ets = 0.
     real    :: etyld = 0., eveg = 0., precips = 0., runons = 0., sgrirr = 0., snirr = 0.

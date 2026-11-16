@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CSK_API_VERSION 2
+#define CSK_API_VERSION 3
 
 /* Status codes (1-4 are the original program's STOP checks). */
 #define CSK_OK              0
@@ -27,6 +27,16 @@ extern "C" {
 #define CSK_ERR_TRANS_CONV  3
 #define CSK_ERR_NEG_RUNOFF  4
 #define CSK_ERR_BAD_INPUT  11
+
+/* csk_options_t.et_method: how potential ET is split into soil
+   evaporation and transpiration (a method choice, not a fix).
+   CSK_ET_ORIGINAL   CropSim's own split (two-stage drying), the default.
+   CSK_ET_FAO56_DUAL FAO-56 dual crop coefficient: the crop's KC curve as
+                     the basal KCB, KE from a surface-layer balance.
+   See docs/kernel/dual-kc.md. API version 3 added this field (it was
+   reserved and had to be 0). */
+#define CSK_ET_ORIGINAL   0
+#define CSK_ET_FAO56_DUAL 1
 
 /* Bug-fix switches (see docs/kernel/fixes.md). Every fix is on by default:
    a zeroed csk_options_t runs the corrected model. Set a bit in
@@ -122,7 +132,7 @@ typedef struct {
     int32_t revert;         /* CSK_FIX_* bits to turn off; 0 = all fixes on */
     int32_t livecond;       /* original LIVECOND rule (same SIM, earlier year) */
     int32_t legacy_round;   /* round the returned state like INITIAL.DAT */
-    int32_t reserved;
+    int32_t et_method;      /* CSK_ET_*: how potential ET is split into E and T */
 } csk_options_t;
 
 typedef struct {

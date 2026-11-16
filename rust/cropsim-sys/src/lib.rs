@@ -9,7 +9,7 @@
 #![allow(non_camel_case_types)]
 
 /// Interface version this crate was written for (`CSK_API_VERSION`).
-pub const CSK_API_VERSION: i32 = 2;
+pub const CSK_API_VERSION: i32 = 3;
 
 pub const CSK_OK: i32 = 0;
 pub const CSK_ERR_RUNOFF: i32 = 1;
@@ -17,6 +17,11 @@ pub const CSK_ERR_EFF_PRECIP: i32 = 2;
 pub const CSK_ERR_TRANS_CONV: i32 = 3;
 pub const CSK_ERR_NEG_RUNOFF: i32 = 4;
 pub const CSK_ERR_BAD_INPUT: i32 = 11;
+
+/// `csk_options_t.et_method`: CropSim's own E/T split (the default).
+pub const CSK_ET_ORIGINAL: i32 = 0;
+/// `csk_options_t.et_method`: FAO-56 dual crop coefficient.
+pub const CSK_ET_FAO56_DUAL: i32 = 1;
 
 /// `csk_options_t.revert` value that turns every fix off (original v8.0).
 pub const CSK_REVERT_ALL: i32 = 0x7FFF_FFFF;
@@ -169,7 +174,8 @@ pub struct csk_options_t {
     pub revert: i32,
     pub livecond: i32,
     pub legacy_round: i32,
-    pub reserved: i32,
+    /// `CSK_ET_*`: how potential ET is split into E and T.
+    pub et_method: i32,
 }
 
 #[repr(C)]

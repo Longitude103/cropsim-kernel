@@ -46,6 +46,7 @@ contains
     call load_params(w, p)
     w%iyear = wx%year
     w%livecond = opt%livecond
+    w%et_method = opt%et_method
 
     ! ---- SIM values (original 828-910) ----
     w%crop = simp%crop
@@ -359,6 +360,7 @@ contains
       if ((wx%imstr < 1) .or. (wx%imstr > 12)) return
       if ((state_in%oldcrp < 1) .or. (state_in%oldcrp > NCROP)) return
       if ((p%nfday < 0) .or. (p%nfday > NFCST - NDAY)) return
+      if ((opt%et_method /= CSK_ET_ORIGINAL) .and. (opt%et_method /= CSK_ET_FAO56_DUAL)) return
       valid_inputs = .true.
     end function valid_inputs
 

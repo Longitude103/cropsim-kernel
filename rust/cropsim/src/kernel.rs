@@ -16,6 +16,31 @@ pub struct RunOptions {
     pub livecond: bool,
     /// Round the returned state like INITIAL.DAT, to match old runs.
     pub legacy_rounding: bool,
+    /// How potential ET is split into soil evaporation and transpiration.
+    pub et_method: EtMethod,
+}
+
+/// How potential ET is split into soil evaporation and transpiration
+/// (a method choice, not a bug fix; see docs/kernel/dual-kc.md).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EtMethod {
+    /// CropSim's own split: two-stage drying of the top two layers and
+    /// transpiration from KC - KCL.
+    #[default]
+    Original,
+    /// FAO-56 dual crop coefficient: the crop's KC curve is the basal KCB
+    /// (alfalfa reference), with KE from a daily surface-layer balance.
+    Fao56Dual,
+}
+
+impl EtMethod {
+    pub fn code(self) -> i32 {
+        match self {
+            EtMethod::Original => sys::CSK_ET_ORIGINAL,
+            EtMethod::Fao56Dual => sys::CSK_ET_FAO56_DUAL,
+        }
+    }
 }
 
 /// The kernel with its parameters (BLOCK.DAT and TILLAGE.DAT). Every run is
@@ -114,7 +139,7 @@ impl Kernel {
             revert: opts.fixes.revert_bits(),
             livecond: opts.livecond as i32,
             legacy_round: opts.legacy_rounding as i32,
-            reserved: 0,
+            et_method: opts.et_method.code(),
         };
         let mut out_state = st;
         let mut raw = sys::zeroed_box::<sys::csk_result_t>();

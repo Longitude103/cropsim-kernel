@@ -14,6 +14,23 @@ module csk_balance
 
   public :: water_balance
 
+  ! FAO-56 dual crop coefficient settings (et_method = CSK_ET_FAO56_DUAL).
+  ! KCMAX_ETR: upper limit of KC after wetting on an alfalfa (ETr)
+  ! basis (Allen et al. 2005; about 1.2 on a grass basis).
+  ! REW_IN: readily evaporable water, inches (FAO-56 Table 19, 8-9 mm
+  ! for loams). FW_RAIN_IN: rain that wets the whole surface (3 mm).
+  real, parameter :: KCMAX_ETR = 1.0, REW_IN = 0.35, FW_RAIN_IN = 0.12
+  ! Fraction of the surface wetted by irrigation, by IRRTYP (FAO-56
+  ! Table 20): known dates and sprinklers 1.0, furrow every row 0.8,
+  ! border 1.0. IRRTYP 1 is dryland.
+  real, parameter :: FW_IRR(5) = [1.0, 1.0, 1.0, 0.8, 1.0]
+  ! Maximum crop height, m, for the cover fraction (FAO-56 Eq. 76 and
+  ! Table 12).
+  real, parameter :: HMAX(22) = [ &
+      1.0, 0.4, 0.8, 0.6, 0.5, 1.5, 1.0, 2.0, 2.0, 0.7, &
+      0.6, 0.3, 0.3, 0.1, 0.0, 10.0, 8.0, 1.5, 1.5, 0.0, &
+      0.0, 0.3]
+
 contains
 
   logical function is_wet_cover(crop)
@@ -168,6 +185,11 @@ contains
       w%totwat = w%totwat + w%theta(i) * w%depth(i)
     end do
 
+    ! Dual crop coefficient: the surface layer starts as wet or as dry as
+    ! the carried-over soil water says, wetted over the whole surface.
+    w%fw = 1.0
+    w%de = min(max((w%fieldc(1) - w%theta(1))*w%depth(1), 0.0), surface_tew())
+
     w%etrmon = 0.; w%emon = 0.; w%tmon = 0.; w%etmon = 0.
     w%ermon = 0.; w%ramon = 0.; w%rofmon = 0.; w%ronmon = 0.
     w%irnmon = 0.; w%irgmon = 0.; w%infmon = 0.; w%dramon = 0.
@@ -298,6 +320,8 @@ contains
         call infiltrate(w)
       end block irrigation
 
+      if (w%et_method == CSK_ET_FAO56_DUAL) call wet_surface()
+
       ! ---- Crop coefficient, residue and soil temperature ----
       w%kc = w%cropkc(jday)
       if (crop < 10) then
@@ -319,7 +343,18 @@ contains
 
       ! ---- Evaporation and transpiration ----
       reach248 = .false.
-      if (.not. wet) then
+      if ((.not. wet) .and. (w%et_method == CSK_ET_FAO56_DUAL)) then
+        w%kcb = 0.
+        w%ke = 0.
+        if (w%etr(jday) > 0.) then
+          call dual_kc_evaporation()
+          if (crop == 15) then
+            reach248 = .true.          ! no transpiration from fallow
+          else
+            call transpiration(reach248)
+          end if
+        end if
+      else if (.not. wet) then
         if (w%etr(jday) > 0.) then
           w%ep = w%etr(jday)*min((w%kcu(crop) + w%kcl(crop) - w%kc), 1.0)
           w%epmax = w%ep
@@ -590,6 +625,89 @@ contains
     end function storage
 
     !-------------------------------------------------------------------
+    !  FAO-56 dual crop coefficient: total evaporable water of the
+    !  surface layer (layer 1, field capacity to air dry), inches.
+    !-------------------------------------------------------------------
+    real function surface_tew()
+      surface_tew = max((w%fieldc(1) - w%airdry(1))*w%depth(1), 0.01)
+    end function surface_tew
+
+    !-------------------------------------------------------------------
+    !  FAO-56 Eq. 77, wetting: today's infiltrated rain and irrigation
+    !  refill the surface layer of the wetted fraction FW (irrigation is
+    !  concentrated on the part it wets). Rain of 0.12 in or more wets the
+    !  whole surface.
+    !-------------------------------------------------------------------
+    subroutine wet_surface()
+      real :: fwi
+      if (w%eprecip >= FW_RAIN_IN) then
+        w%fw = 1.0
+      else if (w%irrinf > 0.0) then
+        w%fw = FW_IRR(w%irrtyp)
+      end if
+      fwi = w%fw
+      if (w%irrinf > 0.0 .and. w%eprecip < FW_RAIN_IN) fwi = FW_IRR(w%irrtyp)
+      w%de = w%de - max(w%eprecip, 0.0)
+      if (w%irrinf > 0.0) w%de = w%de - w%irrinf/fwi
+      if (w%de < 0.0) w%de = 0.0
+    end subroutine wet_surface
+
+    !-------------------------------------------------------------------
+    !  FAO-56 dual crop coefficient, evaporation (ch. 7, Eqs. 71-77).
+    !  Sets KCB (the day's KC curve value; 0 for fallow), KE, E, and takes
+    !  E from layer 1. E1 holds E and E2 is 0 so the totals work as before.
+    !-------------------------------------------------------------------
+    subroutine dual_kc_evaporation()
+      real :: kcmin, kcmax, fcl, fc, h, few, tew, rew, kr, redf, resdep, avail
+
+      if (crop == 15) then
+        w%kcb = 0.
+      else
+        w%kcb = w%kc
+      end if
+      kcmin = w%kcl(crop)
+      kcmax = max(KCMAX_ETR, w%kcb + 0.05)                          ! Eq. 72
+
+      ! Fraction of the surface covered by vegetation (Eq. 76), and the
+      ! exposed, wetted fraction that evaporates (Eq. 75).
+      fcl = 0.
+      if (kcmax > kcmin) fcl = min(max((w%kcb - kcmin)/(kcmax - kcmin), 0.0), 0.99)
+      h = HMAX(crop)*fcl
+      fc = fcl**(1.0 + 0.5*h)
+      few = max(min(1.0 - fc, w%fw), 0.01)
+
+      ! Evaporation reduction once the readily evaporable water is gone (Eq. 74).
+      tew = surface_tew()
+      rew = min(REW_IN, 0.9*tew)
+      w%de = min(max(w%de, 0.0), tew)
+      if (w%de <= rew) then
+        kr = 1.0
+      else
+        kr = max((tew - w%de)/(tew - rew), 0.0)
+      end if
+
+      ! Residue cover, as the original reduces evaporation.
+      redf = 1.0
+      if (w%residue > 0.0) then
+        resdep = 1.123E-07 * w%residue / w%spgrav(w%oldcrp)
+        redf = min(-0.99 - 0.236*log(resdep), 1.0)
+        if (redf < 0.0) redf = 0.0
+      end if
+
+      w%ke = min(kr*(kcmax - w%kcb), few*kcmax)*redf                ! Eq. 71
+      e = w%ke*w%etr(jday)
+      avail = max((w%theta(1) - w%airdry(1))*w%depth(1), 0.0)
+      if (e > avail) e = avail
+      w%theta(1) = w%theta(1) - e/w%depth(1)
+      w%de = min(w%de + e/few, tew)                                  ! Eq. 77
+      w%ep = w%ke*w%etr(jday)
+      w%epmax = w%ep
+      w%e1 = e
+      w%e2 = 0.
+      w%cume = w%cume + e
+    end subroutine dual_kc_evaporation
+
+    !-------------------------------------------------------------------
     !  Transpiration and root water uptake (DEPLT 200-245). Sets t.
     !  REACHED is false when there is no potential transpiration (the
     !  original skipped the seasonal totals then).
@@ -602,8 +720,13 @@ contains
       integer :: k, itries
 
       reached = .false.
-      w%tp = w%etr(jday)*(w%kc - w%kcl(crop))
-      if (w%ep > 0.0) w%tp = w%tp*(1.0 + tup*(w%epmax - e)/w%epmax)
+      if (w%et_method == CSK_ET_FAO56_DUAL) then
+        ! Basal transpiration; the stress below is the FAO-56 Ks.
+        w%tp = w%etr(jday)*w%kcb
+      else
+        w%tp = w%etr(jday)*(w%kc - w%kcl(crop))
+        if (w%ep > 0.0) w%tp = w%tp*(1.0 + tup*(w%epmax - e)/w%epmax)
+      end if
       if (w%tp <= 0.0) return
       reached = .true.
 

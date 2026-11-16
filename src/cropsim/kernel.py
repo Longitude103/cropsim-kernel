@@ -112,12 +112,19 @@ class Kernel:
 
     def run_year(self, sim: Sim, soil: Soil, weather: Weather, state: State, *,
                  fixes: Fix | int = ALL_FIXES, livecond: bool = False,
-                 legacy_rounding: bool = False, raise_on_error: bool = True) -> Result:
+                 legacy_rounding: bool = False, raise_on_error: bool = True,
+                 et_method: str = "original") -> Result:
         """Run one year; returns results (with .daily) and the end-of-year state.
 
         ``fixes`` picks the bug fixes to apply: all of them by default,
         ``Fix.ORIGINAL`` for the original program's results.
+        ``et_method`` splits potential ET into evaporation and transpiration:
+        ``"original"`` (CropSim's own split) or ``"fao56_dual"`` (FAO-56 dual
+        crop coefficient, see docs/kernel/dual-kc.md).
         """
+        methods = {"original": _lib.ET_ORIGINAL, "fao56_dual": _lib.ET_FAO56_DUAL}
+        if et_method not in methods:
+            raise ValueError(f"et_method must be one of {sorted(methods)}, got {et_method!r}")
         n = len(weather.tmax)
         if not 1 <= n <= 366:
             raise ValueError(f"weather must have 1 to 366 days, got {n}")
@@ -131,7 +138,7 @@ class Kernel:
             raise ValueError("at most 50 irrigation events")
         revert = ~int(fixes) & REVERT_ALL
         opt = _lib.OptionsT(revert=revert, livecond=int(livecond),
-                            legacy_round=int(legacy_rounding))
+                            legacy_round=int(legacy_rounding), et_method=methods[et_method])
         out_state = _lib.StateT()
         res = _lib.KResultT()
         status = self._lib.csk_run_year(

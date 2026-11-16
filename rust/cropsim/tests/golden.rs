@@ -199,3 +199,40 @@ fn runs_on_many_threads() {
         }
     });
 }
+
+#[test]
+fn dual_crop_coefficient_option() {
+    use cropsim::EtMethod;
+    let fx = root().join("tests/fixtures");
+    let kernel = Kernel::new(
+        &legacy::read_block(fx.join("BLOCK.DAT")).unwrap(),
+        &legacy::read_tillage(fx.join("TILLAGE.DAT")).unwrap(),
+    )
+    .unwrap();
+    let soil = legacy::read_soils(fx.join("NESOILS.DAT")).unwrap()[&622].clone();
+    let sim = legacy::read_sim(fx.join("sim/CRNIRR01.SIM")).unwrap();
+    let state = legacy::read_initial(fx.join("INITIAL.DAT")).unwrap();
+    let w = legacy::read_weather(fx.join("wea/TEST2012.WEA"), None).unwrap();
+    let base = kernel
+        .run_year(&sim, &soil, &w, &state, &RunOptions::default())
+        .unwrap();
+    let dual = kernel
+        .run_year(
+            &sim,
+            &soil,
+            &w,
+            &state,
+            &RunOptions {
+                et_method: EtMethod::Fao56Dual,
+                ..RunOptions::default()
+            },
+        )
+        .unwrap();
+    let (b, d) = (base.annual(), dual.annual());
+    assert!(d.balerr.abs() < 2e-3);
+    // More of the water goes to transpiration than with the original split.
+    assert!(d.ts > b.ts && d.es < b.es, "{b:?} {d:?}");
+    // The option is in run options as "fao56_dual".
+    let o: RunOptions = serde_json::from_str(r#"{"et_method": "fao56_dual"}"#).unwrap();
+    assert_eq!(o.et_method, EtMethod::Fao56Dual);
+}
