@@ -34,7 +34,7 @@ contains
     integer :: k, i, livecrop_deplt
     real :: soilrz, rzfact, rdepth, d
 
-    res = empty_result()
+    call clear_result(res)
     state_out = state_in
 
     if (.not. valid_inputs()) then
@@ -143,6 +143,7 @@ contains
 
     w%ihygrp = w%soil/10 - 10*(w%soil/100)
     w%satwc = 1.0 - w%bulkd/2.65
+    call soil_temperature_setup(w)
     w%draind = soilp%drnday
     w%dcoeff = soilp%drncoe
 
@@ -211,12 +212,7 @@ contains
     w%lat = wx%lat
     w%long = wx%long
     w%elev = wx%elev
-    w%wx_ndays = wx%ndays
-    w%wx_tmax = wx%tmax
-    w%wx_tmin = wx%tmin
-    w%wx_precip = wx%precip
-    w%wx_etr = wx%etr
-    call prepare_weather(w)
+    call prepare_weather(w, wx)
 
     ! ---- Tillage dates (original 1059-1081) ----
     ! Timing 1 = days before planting, 2 = after planting, 3 = after
@@ -341,7 +337,7 @@ contains
 
   contains
 
-    logical function valid_inputs()
+    pure logical function valid_inputs()
       valid_inputs = .false.
       if ((simp%crop < 1) .or. (simp%crop > NCROP)) return
       if ((simp%layers < 1) .or. (simp%layers > NLAY)) return
@@ -366,7 +362,7 @@ contains
 
   end subroutine run_year
 
-  subroutine load_params(w, p)
+  pure subroutine load_params(w, p)
     type(csk_work_t), intent(inout) :: w
     type(csk_params_t), intent(in) :: p
     w%etrfact = p%etrfact
@@ -396,8 +392,10 @@ contains
     w%tilfac = p%tilfac
   end subroutine load_params
 
-  function empty_result() result(r)
-    type(csk_result_t) :: r
+  ! Zero every result in place (the result is large: about 33 KB, most
+  ! of it daily series, so it is not built in a temporary and copied).
+  pure subroutine clear_result(r)
+    type(csk_result_t), intent(out) :: r
     r%status = CSK_OK
     r%crop_yr = 0; r%crop_mon = 0; r%imbg = 0; r%imend = 0
     r%jdyplt = 0; r%jfirst = 0; r%jdyefc = 0; r%jdymat = 0; r%jdyfrz = 0
@@ -418,6 +416,6 @@ contains
     r%d_grirr = 0.; r%d_nirr = 0.; r%d_irrinf = 0.; r%d_e = 0.; r%d_t = 0.
     r%d_et = 0.; r%d_drain = 0.; r%d_wetsup = 0.; r%d_snow = 0.; r%d_soilw = 0.
     r%d_dpln = 0.; r%d_awdpln = 0.; r%d_balerr = 0.
-  end function empty_result
+  end subroutine clear_result
 
 end module csk_kernel

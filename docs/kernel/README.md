@@ -25,6 +25,12 @@ The print-only work of the original (daily debug listings, off-season
 totals, report headers) is gone. Everything the original returned is
 still returned, in the same units.
 
+## Speed and code review
+
+[performance.md](performance.md): a review for modern Fortran practice and
+for slow spots, what was changed (about 1.3x faster, results bit for bit
+the same) and how to measure it (`tools/kernel_bench`).
+
 ## Layout
 
 | File | Contents | Original |
