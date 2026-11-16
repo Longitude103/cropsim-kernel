@@ -9,7 +9,7 @@
 #![allow(non_camel_case_types)]
 
 /// Interface version this crate was written for (`CSK_API_VERSION`).
-pub const CSK_API_VERSION: i32 = 3;
+pub const CSK_API_VERSION: i32 = 4;
 
 pub const CSK_OK: i32 = 0;
 pub const CSK_ERR_RUNOFF: i32 = 1;
@@ -176,6 +176,8 @@ pub struct csk_options_t {
     pub legacy_round: i32,
     /// `CSK_ET_*`: how potential ET is split into E and T.
     pub et_method: i32,
+    /// 1: skip soil temperature; `soilt` is passed through unchanged.
+    pub skip_soil_temp: i32,
 }
 
 #[repr(C)]

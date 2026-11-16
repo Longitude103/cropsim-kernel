@@ -5,7 +5,9 @@ soils x 6 years, each run three ways (every fix on, Fix.ORIGINAL, and the
 FAO-56 dual crop coefficient), 1,944 runs. Each year starts from the state
 the year before ended with, as the parcel layer runs them.
 
-    python tools/kernel_bench/dump_cases.py cases.bin
+    python tools/kernel_bench/dump_cases.py cases.bin [--skip-soil-temperature]
+
+With --skip-soil-temperature every case sets csk_options_t.skip_soil_temp.
 
 File layout: int32 case count, csk_params_t, then per case csk_sim_t,
 csk_soil_t, csk_weather_t, csk_state_t (state in) and csk_options_t.
@@ -31,7 +33,7 @@ MODES = {
 }
 
 
-def main(out_path: str) -> None:
+def main(out_path: str, skip_soil_temp: bool = False) -> None:
     inp = sc.inputs()
     kernel = Kernel(inp.block, inp.tillage)
     cases = []
@@ -41,7 +43,8 @@ def main(out_path: str) -> None:
                 state = inp.initial.copy()
                 for year in sc.YEARS:
                     opt = _lib.OptionsT(revert=~int(mode["fixes"]) & REVERT_ALL,
-                                        et_method=1 if mode["et_method"] == "fao56_dual" else 0)
+                                        et_method=1 if mode["et_method"] == "fao56_dual" else 0,
+                                        skip_soil_temp=int(skip_soil_temp))
                     cases.append(b"".join([
                         bytes(Engine._sim_struct(sim)),
                         bytes(Engine._soil_struct(inp.soils[soil])),
@@ -60,4 +63,4 @@ def main(out_path: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], "--skip-soil-temperature" in sys.argv[2:])

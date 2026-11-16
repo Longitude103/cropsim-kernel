@@ -77,12 +77,31 @@ so it rounds the same way; that is why results do not move.
 * **Link-time optimisation.** About 1% faster, not worth the build risk on
   Windows and macOS.
 
-## A larger gain, if wanted
+## Skipping soil temperature (optional)
 
-The soil temperature routine (SOILTEMP) is now about a quarter of the
-kernel's time, mostly ten `exp` calls a day. It never feeds back to the
-water balance: it only updates the soil temperature carried in the state
-(`soilt`). An option to skip it, leaving `soilt` as passed in, would make
-runs that do not need soil temperature about a third faster again. That
-changes the interface (a new `csk_options_t` field) and the state output
-when used, so it is left as a decision.
+The soil temperature routine (SOILTEMP), with the solar radiation series it
+needs, was about a third of the kernel's time after the changes above. It
+never feeds back to the water balance: it only updates the soil
+temperature carried in the state (`soilt`). API version 4 adds a switch to
+skip it. **It is off by default**: soil temperature is computed unless a
+caller asks otherwise.
+
+| Interface | Setting |
+| --- | --- |
+| C | `csk_options_t.skip_soil_temp = 1` |
+| Python | `Kernel.run_year(..., skip_soil_temperature=True)` |
+| Rust | `RunOptions { skip_soil_temperature: true, .. }` |
+| Run file | `[model] soil_temperature = false` (`run_summary.json` records it) |
+
+When skipped, every annual, monthly, weekly and daily result and every
+other state value is bit for bit the same, and `soilt` comes back exactly
+as it went in (`tests/test_skip_soil_temp.py` checks this on every test
+parcel, soil and year, in all three model modes).
+
+| Benchmark (1,944 runs, one core) | Time per run | Runs/s, 4 threads |
+| --- | --- | --- |
+| Before this review | 107-113 µs | 28-31 thousand |
+| After, soil temperature on (default) | 72-88 µs | 35-41 thousand |
+| After, soil temperature skipped | 49-62 µs | 55 thousand |
+
+So with the switch, the kernel is about 2x faster than before the review.

@@ -47,6 +47,7 @@ contains
     w%iyear = wx%year
     w%livecond = opt%livecond
     w%et_method = opt%et_method
+    w%soil_temp = opt%skip_soil_temp == 0
 
     ! ---- SIM values (original 828-910) ----
     w%crop = simp%crop

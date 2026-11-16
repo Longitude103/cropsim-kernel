@@ -113,7 +113,7 @@ class Kernel:
     def run_year(self, sim: Sim, soil: Soil, weather: Weather, state: State, *,
                  fixes: Fix | int = ALL_FIXES, livecond: bool = False,
                  legacy_rounding: bool = False, raise_on_error: bool = True,
-                 et_method: str = "original") -> Result:
+                 et_method: str = "original", skip_soil_temperature: bool = False) -> Result:
         """Run one year; returns results (with .daily) and the end-of-year state.
 
         ``fixes`` picks the bug fixes to apply: all of them by default,
@@ -121,6 +121,9 @@ class Kernel:
         ``et_method`` splits potential ET into evaporation and transpiration:
         ``"original"`` (CropSim's own split) or ``"fao56_dual"`` (FAO-56 dual
         crop coefficient, see docs/kernel/dual-kc.md).
+        ``skip_soil_temperature`` skips the soil temperature routine, about
+        a quarter of the run time. It never feeds the water balance: every
+        result is the same, and the state's ``soilt`` comes back unchanged.
         """
         methods = {"original": _lib.ET_ORIGINAL, "fao56_dual": _lib.ET_FAO56_DUAL}
         if et_method not in methods:
@@ -138,7 +141,8 @@ class Kernel:
             raise ValueError("at most 50 irrigation events")
         revert = ~int(fixes) & REVERT_ALL
         opt = _lib.OptionsT(revert=revert, livecond=int(livecond),
-                            legacy_round=int(legacy_rounding), et_method=methods[et_method])
+                            legacy_round=int(legacy_rounding), et_method=methods[et_method],
+                            skip_soil_temp=int(skip_soil_temperature))
         out_state = _lib.StateT()
         res = _lib.KResultT()
         status = self._lib.csk_run_year(

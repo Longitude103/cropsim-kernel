@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define CSK_API_VERSION 3
+#define CSK_API_VERSION 4
 
 /* Status codes (1-4 are the original program's STOP checks). */
 #define CSK_OK              0
@@ -133,6 +133,9 @@ typedef struct {
     int32_t livecond;       /* original LIVECOND rule (same SIM, earlier year) */
     int32_t legacy_round;   /* round the returned state like INITIAL.DAT */
     int32_t et_method;      /* CSK_ET_*: how potential ET is split into E and T */
+    int32_t skip_soil_temp; /* 1: skip soil temperature; state soilt is passed
+                               through unchanged (it never feeds the water
+                               balance). About 1.3x faster. API version 4. */
 } csk_options_t;
 
 typedef struct {

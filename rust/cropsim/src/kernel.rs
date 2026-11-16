@@ -18,6 +18,10 @@ pub struct RunOptions {
     pub legacy_rounding: bool,
     /// How potential ET is split into soil evaporation and transpiration.
     pub et_method: EtMethod,
+    /// Skip the soil temperature routine. It never feeds the water
+    /// balance, only the carried-over soil temperature (`soilt`), which is
+    /// then returned unchanged. About 1.3x faster.
+    pub skip_soil_temperature: bool,
 }
 
 /// How potential ET is split into soil evaporation and transpiration
@@ -140,6 +144,7 @@ impl Kernel {
             livecond: opts.livecond as i32,
             legacy_round: opts.legacy_rounding as i32,
             et_method: opts.et_method.code(),
+            skip_soil_temp: opts.skip_soil_temperature as i32,
         };
         let mut out_state = st;
         let mut raw = sys::zeroed_box::<sys::csk_result_t>();

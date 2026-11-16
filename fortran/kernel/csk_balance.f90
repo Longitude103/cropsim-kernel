@@ -360,7 +360,7 @@ contains
         end do
       end if
 
-      call soil_temperature(w)
+      if (w%soil_temp) call soil_temperature(w)
 
       ! ---- Evaporation and transpiration ----
       reach248 = .false.

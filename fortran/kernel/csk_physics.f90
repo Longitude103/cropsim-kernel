@@ -204,6 +204,7 @@ contains
 
     ! Solar radiation estimate and mean annual air temperature, used
     ! only by the soil temperature routine.
+    if (.not. w%soil_temp) return
     w%tanual = 0.0
     rsoa = 753.6 - 6.53 * w%lat + 0.0057*w%elev
     rsob = -7.1 + 6.4 * w%lat + 0.0030 * w%elev

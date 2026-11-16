@@ -27,7 +27,7 @@ module csk_types
   integer, parameter, public :: NEVENT = 50      ! known irrigation events
   integer, parameter, public :: NTILL = 20       ! tillage operations
 
-  integer(c_int), parameter, public :: CSK_API_VERSION = 3
+  integer(c_int), parameter, public :: CSK_API_VERSION = 4
 
   ! ---- Status codes (1-4 are the original program's STOP checks) ----
   integer(c_int), parameter, public :: CSK_OK             = 0
@@ -189,6 +189,10 @@ module csk_types
     integer(c_int) :: livecond       ! 1: original LIVECOND rule applies
     integer(c_int) :: legacy_round   ! 1: round state like INITIAL.DAT
     integer(c_int) :: et_method      ! CSK_ET_* (0: original split)
+    ! 1: skip soil temperature (SOILTEMP). It never feeds the water
+    ! balance; it only updates state%soilt, which is then passed through
+    ! unchanged. Saves about a quarter of the run time. Added in API 4.
+    integer(c_int) :: skip_soil_temp
   end type csk_options_t
 
   ! ------------------------------------------------------------------
@@ -238,6 +242,7 @@ module csk_types
     integer :: fixes = 0
     integer :: status = 0
     integer :: et_method = 0
+    logical :: soil_temp = .true.    ! .false.: options%skip_soil_temp
     ! parameters
     real    :: etrfact = 0.
     integer :: nfday = 0, ytrend = 0
