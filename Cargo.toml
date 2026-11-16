@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "rust/mf6",
+  "rust/climate",
   "rust/cropsim-sys",
   "rust/cropsim",
   "rust/pbm-core",
@@ -11,6 +12,8 @@ members = [
 # pbm-py is a Python extension module; build it with maturin, not cargo test.
 default-members = [
   "rust/mf6",
+  "rust/climate",
+  "rust/climate",
   "rust/cropsim-sys",
   "rust/cropsim",
   "rust/pbm-core",
