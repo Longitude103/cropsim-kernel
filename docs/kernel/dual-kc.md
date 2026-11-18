@@ -121,9 +121,8 @@ option is used for production runs.
   under 15% of ET and unstressed T equals KCB·ETr; wet covers are unchanged;
   the default is unchanged; six-year ET of the main crops stays within 25%
   of the original split's.
-* `rust/cropsim/tests/golden.rs::dual_crop_coefficient_option` and
-  `rust/pbm-core/tests/example_run.rs::dual_crop_coefficient_run`: the option
-  through Rust and a parcel run file.
+* `rust/cropsim/tests/golden.rs::dual_crop_coefficient_option`: the option
+  through Rust.
 
 ## Not done
 

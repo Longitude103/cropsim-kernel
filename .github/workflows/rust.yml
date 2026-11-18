@@ -1,8 +1,8 @@
 name: Rust
 
-# The Rust parcel layer (the mf6 crate has its own job in ci.yml): weather and reference ET (climate), kernel binding, pbm-core, the pbm command line and
-# the Python module pbm. Also builds the precompiled kernel bundle per
-# platform, and proves a build from the bundle needs no Fortran compiler.
+# The Rust bindings to the kernel (cropsim-sys, cropsim). Also builds the
+# precompiled kernel bundle per platform, and proves a build from the bundle
+# needs no Fortran compiler.
 on:
   push:
     branches: [main]
@@ -27,22 +27,11 @@ jobs:
         with:
           components: clippy, rustfmt
       - name: Format
-        run: cargo fmt -p climate -p cropsim-sys -p cropsim -p pbm-core -p pbm-cli -p pbm-py --check
-      - name: Tests (kernel parity with the pinned original, example parcel run)
-        run: cargo test --release -p climate -p cropsim-sys -p cropsim -p pbm-core -p pbm-cli
+        run: cargo fmt -p cropsim-sys -p cropsim --check
+      - name: Tests (kernel parity with the pinned original)
+        run: cargo test --release -p cropsim-sys -p cropsim
       - name: Clippy
-        run: cargo clippy --release --all-targets -p climate -p cropsim-sys -p cropsim -p pbm-core -p pbm-cli -- -D warnings
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Python module (maturin) and its tests
-        run: |
-          python -m venv .venv
-          . .venv/bin/activate
-          pip install maturin pytest pyarrow
-          cd rust/pbm-py && maturin develop --release && cd ../..
-          cargo build --release -p pbm-cli
-          pytest -v rust/pbm-py/tests
+        run: cargo clippy --release --all-targets -p cropsim-sys -p cropsim -- -D warnings
 
   kernel-bundle:
     name: Kernel bundle (${{ matrix.os }})
@@ -82,4 +71,4 @@ jobs:
       - name: Test with the precompiled kernel (FC points at a command that fails)
         env:
           FC: "false"
-        run: CROPSIM_KERNEL_LIB_DIR="$PWD/kernel-bundle" cargo test --release -p cropsim -p pbm-core
+        run: CROPSIM_KERNEL_LIB_DIR="$PWD/kernel-bundle" cargo test --release -p cropsim

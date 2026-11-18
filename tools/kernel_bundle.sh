@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Build the precompiled CropSim kernel bundle for this platform: a static
 # libcropsim_kernel.a plus the static Fortran runtime it needs, so Rust
-# builds (the pbm CLI, the desktop app) link the kernel without gfortran.
+# builds (such as programs that use the cropsim crate) link the kernel
+# without gfortran.
 #
 #   tools/kernel_bundle.sh OUT_DIR
 #   CROPSIM_KERNEL_LIB_DIR=OUT_DIR cargo build --release

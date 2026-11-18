@@ -1,13 +1,19 @@
-# Parcel-Based Modeling
+# CropSim kernel
 
-Parcel-based groundwater model inputs for Nebraska, built around the CropSim
-soil water balance model.
+The CropSim soil water balance model as a library, with Python and Rust
+wrappers.
 
 This repository holds the CropSim v8.0 Fortran model, frozen as the
 permanent reference, and **the CropSim compute kernel**: the same model
 rewritten as a thread-safe library with no file I/O and a C interface, with
 each known bug fixable by its own switch (`docs/kernel/`). The Python package
-(`cropsim`) runs both, one year at a time.
+(`cropsim`) runs both, one year at a time, and the Rust crates `cropsim-sys`
+and `cropsim` run the kernel from Rust.
+
+Parcel-scale runs, data readers and writers, and MODFLOW 6 files are built
+on this library in a separate repository,
+[Parcel-Based-Modeling](https://github.com/Longitude103/Parcel-Based-Modeling).
+This repository is only the kernel and its wrappers.
 
 ## Layout
 
@@ -23,8 +29,9 @@ each known bug fixable by its own switch (`docs/kernel/`). The Python package
 | `src/cropsim/` | Python package: ctypes binding, input/result objects, readers for the old input files. |
 | `tests/` | Parity test against the original program, kernel golden and bug-fix tests. |
 | `tests/golden/original.csv` | Original model results for 648 test-parcel runs (`tools/make_golden.py`). |
-| `rust/` | The parcel layer in Rust: kernel binding (`cropsim-sys`, `cropsim`), parcel runs (`pbm-core`), the `pbm` command line and the `pbm` Python module. See `docs/parcel-layer/`. |
-| `examples/parcel-run/` | A small parcel run on the test fixtures: five parcels, six years, a shared meter, surface water. |
+| `rust/cropsim-sys/` | Raw Rust FFI to the kernel. `build.rs` compiles the kernel with gfortran or links a precompiled bundle (`tools/kernel_bundle.sh`, `CROPSIM_KERNEL_LIB_DIR`). |
+| `rust/cropsim/` | Safe Rust API: `Kernel::run_year`, `Fix` switches, readers for the original input files. |
+| `tools/walkthrough/` | Traces one week of a parcel through the original program, step by step. |
 
 ## Using it
 
@@ -89,32 +96,37 @@ The Fortran engine keeps its working values in module variables, so one
 process runs one year at a time. Use processes (for example
 `multiprocessing`), not threads, to run in parallel.
 
-## Parcel runs (Rust)
+## Using it from Rust
 
-The parcel layer (two-pass irrigation, meter allocation, soil components,
-Parquet outputs, groundwater fluxes) is a Rust crate next to the kernel.
-The `pbm` command line, the `pbm` Python module and the desktop app all run
-it. See `docs/parcel-layer/README.md`.
-
-```bash
-cargo run --release -p pbm-cli -- run examples/parcel-run/run.toml --pretty
+```toml
+[dependencies]
+cropsim = { git = "https://github.com/Longitude103/cropsim-kernel" }
 ```
 
-```python
-import pbm                      # cd rust/pbm-py && maturin develop --release
-summary = pbm.run("examples/parcel-run/run.toml", threads=8)
+```rust
+use cropsim::{legacy, Fix, Kernel, RunOptions};
 ```
+
+`Kernel::run_year(sim, soil, weather, state, opts)` takes the same inputs as
+the Python `Kernel` and gives bit-identical results. Inputs are serde types,
+so they can come from JSON, a database or anywhere else. Building needs
+gfortran, unless `CROPSIM_KERNEL_LIB_DIR` points at a precompiled kernel
+bundle (`tools/kernel_bundle.sh`; CI builds one per platform).
 
 ## Building
 
-Needs gfortran and Python 3.9+.
+Needs gfortran and Python 3.9+ (Rust 1.82+ for the crates).
 
 ```bash
 pip install .            # builds the Fortran library with CMake and installs cropsim
 pip install ".[test]" && pytest
 ```
 
-CI builds and tests on Linux, macOS and Windows. The Wheels workflow builds
+```bash
+cargo test --release     # Rust bindings, golden parity with the original
+```
+
+CI builds and tests on Linux, macOS and Windows (Rust: Linux and macOS). The Wheels workflow builds
 self-contained wheels (Fortran runtime bundled) for all three.
 
 ## Parity with the original
@@ -150,3 +162,7 @@ the original read or wrote files or stopped:
 - Values a SIM file does not set for its crop type (for example `GDDFLO` for
   alfalfa and pasture, which `ROOTZN` still uses) come from the `Sim` object
   (default 0) rather than from whatever SIM file ran before.
+
+## License
+
+Apache License 2.0. See `LICENSE`.

@@ -28,29 +28,3 @@ jobs:
         run: python -m pip install ".[test]"
       - name: Run tests (includes parity with the original program)
         run: python -m pytest -v
-
-  mf6-crate:
-    name: Rust mf6 crate (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: clippy, rustfmt
-      - name: Install mf6 (same version as the test fixtures)
-        uses: modflowpy/install-modflow-action@v1
-        with:
-          owner: MODFLOW-ORG
-          repo: modflow6
-          tag: 6.8.1
-          github_token: ${{ github.token }}
-      - run: cargo fmt -p mf6 --check
-      - run: cargo clippy -p mf6 --all-targets -- -D warnings
-      - name: Tests (parity with FloPy; runs mf6)
-        run: cargo test -p mf6
-        env:
-          MF6_REQUIRED: "1"

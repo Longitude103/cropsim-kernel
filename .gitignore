@@ -11,4 +11,3 @@ wheelhouse/
 .venv/
 .pytest_cache/
 target/
-examples/parcel-run/out/
