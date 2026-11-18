@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+  "rust/cropsim-sys",
+  "rust/cropsim",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Longitude 103"]
+repository = "https://github.com/Longitude103/cropsim-kernel"
+rust-version = "1.82"
+publish = false
+
+[profile.release]
+lto = "thin"

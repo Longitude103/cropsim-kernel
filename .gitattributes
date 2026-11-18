@@ -1,0 +1,8 @@
+# Keep LF everywhere: tools/make_engine.py checks the frozen original by hash.
+* text=auto eol=lf
+
+# mf6 binary outputs used as test fixtures
+*.hds binary
+*.cbc binary
+*.grb binary
+*.bin binary
