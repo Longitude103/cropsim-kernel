@@ -25,6 +25,12 @@ The print-only work of the original (daily debug listings, off-season
 totals, report headers) is gone. Everything the original returned is
 still returned, in the same units.
 
+## Speed and code review
+
+[performance.md](performance.md): a review for modern Fortran practice and
+for slow spots, what was changed (about 1.3x faster, results bit for bit
+the same) and how to measure it (`tools/kernel_bench`).
+
 ## Layout
 
 | File | Contents | Original |
@@ -54,6 +60,11 @@ int32_t csk_run_year(const csk_params_t *params, const csk_sim_t *sim,
   transpiration: `CSK_ET_ORIGINAL` (0, the default) or `CSK_ET_FAO56_DUAL`
   (1, FAO-56 dual crop coefficient, [dual-kc.md](dual-kc.md)). Added in
   API version 3; the field was reserved (0) before.
+* `options.skip_soil_temp`: 0 (the default) computes soil temperature; 1
+  skips it. Soil temperature never feeds the water balance, so every result
+  is the same, and `state_out.soilt` is `state_in.soilt` unchanged. Runs
+  are about 1.5x faster. Added in API version 4
+  ([performance.md](performance.md)).
 * `result`: annual, monthly, weekly and daily values, the water balance
   error and a status code.
 

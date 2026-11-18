@@ -15,7 +15,8 @@ module csk_physics
   public :: dayofyr, calday, leap_calendar
   public :: prepare_weather, crop_coefficient
   public :: snowmelt, effective_precip, evaporation, infiltrate
-  public :: root_zone, mgmt_depletion, soil_temperature, crop_yield
+  public :: root_zone, mgmt_depletion, soil_temperature_setup, soil_temperature
+  public :: crop_yield, month_end
 
   integer, parameter :: IDAYS(12) = [0,31,59,90,120,151,181,212,243,273,304,334]
 
@@ -74,6 +75,22 @@ contains
     end if
   end subroutine calday
 
+  !> Last day of year that calday puts in month IMON, so a daily loop
+  !> can step through the months without calling calday every day.
+  !> December runs to day 366 in every year, as in calday.
+  pure integer function month_end(imon, leap)
+    integer, intent(in) :: imon
+    logical, intent(in) :: leap
+    if (imon < 12) then
+      month_end = IDAYS(imon + 1)
+      if (leap .and. imon >= 2) month_end = month_end + 1
+    else if (imon == 12) then
+      month_end = 366
+    else
+      month_end = huge(0)
+    end if
+  end function month_end
+
   !> True when the leap-aware calendar applies to this run's year.
   pure logical function leap_calendar(w)
     type(csk_work_t), intent(in) :: w
@@ -87,9 +104,11 @@ contains
   !  Weather preparation, growing degree days, development dates, daily
   !  crop coefficients and solar radiation (READWEAT, original 3556-3733).
   !---------------------------------------------------------------------
-  subroutine prepare_weather(w)
+  pure subroutine prepare_weather(w, wx)
     type(csk_work_t), intent(inout) :: w
+    type(csk_weather_t), intent(in) :: wx
     real :: tmaxa, tmina, etra, precipa, t1, t2, gdd, day, rsoa, rsob, rso, deltat
+    real :: tbase, tceil
     integer :: i, jday, n
 
     call dayofyr(w%jdystr, w%imstr, w%idstr, leap_calendar(w))
@@ -111,11 +130,11 @@ contains
     i = w%jdystr
     do
       n = i - w%jdystr + 1
-      if (n > w%wx_ndays .or. i > NDAY) exit
-      w%tmax(i) = w%wx_tmax(n)
-      w%tmin(i) = w%wx_tmin(n)
-      w%precip(i) = w%wx_precip(n)
-      w%etr(i) = w%wx_etr(n)
+      if (n > wx%ndays .or. i > NDAY) exit
+      w%tmax(i) = wx%tmax(n)
+      w%tmin(i) = wx%tmin(n)
+      w%precip(i) = wx%precip(n)
+      w%etr(i) = wx%etr(n)
 
       w%ndays = w%ndays + 1
       if ((w%tmax(i) < -50.) .or. (w%tmax(i) > 125.)) w%tmax(i) = tmaxa
@@ -140,14 +159,16 @@ contains
     w%jdyfrz = 0
     w%gdds = 0.0
     gdd = w%gdd
+    tbase = w%tbase(w%crop)
+    tceil = w%tceil(w%crop)
     do i = w%jdyplt, w%jdyend
       t1 = w%tmax(i)
-      if (t1 >= w%tceil(w%crop)) t1 = w%tceil(w%crop)
-      if (t1 < w%tbase(w%crop)) t1 = w%tbase(w%crop)
+      if (t1 >= tceil) t1 = tceil
+      if (t1 < tbase) t1 = tbase
       t2 = w%tmin(i)
-      if (t2 <= w%tbase(w%crop)) t2 = w%tbase(w%crop)
-      if (t2 > w%tceil(w%crop)) t2 = w%tceil(w%crop)
-      gdd = (t1 + t2) / 2. - w%tbase(w%crop)
+      if (t2 <= tbase) t2 = tbase
+      if (t2 > tceil) t2 = tceil
+      gdd = (t1 + t2) / 2. - tbase
       if (gdd < 0.) gdd = 0.
       w%gdds(i) = w%gdds(i-1) + gdd
       if (w%tmin(i) < 26. .and. i >= 200) then
@@ -183,12 +204,13 @@ contains
 
     ! Solar radiation estimate and mean annual air temperature, used
     ! only by the soil temperature routine.
+    if (.not. w%soil_temp) return
     w%tanual = 0.0
+    rsoa = 753.6 - 6.53 * w%lat + 0.0057*w%elev
+    rsob = -7.1 + 6.4 * w%lat + 0.0030 * w%elev
     do i = 1, w%jdystp
       day = i
       w%tavg = 0.5 * (w%tmax(i) + w%tmin(i))
-      rsoa = 753.6 - 6.53 * w%lat + 0.0057*w%elev
-      rsob = -7.1 + 6.4 * w%lat + 0.0030 * w%elev
       rso = rsoa + rsob * cos(2*3.14159*(day-170)/365)
       deltat = w%tmax(i) - w%tmin(i)
       if (w%precip(i) > 0.2) then
@@ -206,7 +228,7 @@ contains
 
     ! First day from planting on which cumulative GDD reaches TARGET
     ! (JDYEND+1 if never), as the original DO/GOTO searches gave.
-    integer function first_day(target)
+    pure integer function first_day(target)
       real, intent(in) :: target
       integer :: k
       do k = w%jdyplt, w%jdyend
@@ -222,7 +244,7 @@ contains
   !  Uses w%gdd as the GDD for the day. KC keeps its previous value on
   !  days none of the rules set it, as in the original.
   !---------------------------------------------------------------------
-  subroutine crop_coefficient(w, jday)
+  pure subroutine crop_coefficient(w, jday)
     type(csk_work_t), intent(inout) :: w
     integer, intent(in) :: jday
     integer :: crop, ipct
@@ -242,7 +264,7 @@ contains
       end if
 
       if ((w%pct >= 0.0) .and. (w%pct <= 1.0)) then
-        ipct = w%pct / 0.10
+        ipct = int(w%pct / 0.10)
         if ((ipct > 0) .and. (ipct < 10)) w%kc = w%cc(crop,w%iefc,ipct) + &
             10*mod(w%pct,0.1)*(w%cc(crop,w%iefc,ipct+1) - w%cc(crop,w%iefc,ipct))
         if ((ipct == 0) .and. (w%iefc == 1)) w%kc = w%kcl(crop) + &
@@ -276,10 +298,10 @@ contains
 
     if (crop == 9) then
       fgs = w%gdd / w%gddmat
-      call fao_curve(crop, fgs)
+      w%kc = fao_kc(crop, fgs, w%kc)
     end if
 
-    if (crop == 10) call alfalfa(jday)
+    if (crop == 10) call alfalfa_kc(w, jday)
 
     ! Irrigated hay: the season restarts at the cutting.
     if (crop == 11) then
@@ -289,12 +311,12 @@ contains
       else
         fgs = (w%gdd - w%gddcut) / (w%gddmat - w%gddcut)
       end if
-      call fao_curve(crop, fgs)
+      w%kc = fao_kc(crop, fgs, w%kc)
     end if
 
     if (crop >= 12) then
       fgs = w%gdd / w%gddmat
-      call fao_curve(crop, fgs)
+      w%kc = fao_kc(crop, fgs, w%kc)
     end if
 
     ! Bounds.
@@ -302,76 +324,79 @@ contains
     if (w%kc < w%kcl(crop)) w%kc = w%kcl(crop)
     if (w%kc > w%kcu(crop)) w%kc = w%kcu(crop)
 
-  contains
+  end subroutine crop_coefficient
 
-    subroutine fao_curve(c, f)
-      integer, intent(in) :: c
-      real, intent(in) :: f
-      real :: fs1, fs2, fs3, kcini, kcmid, kcend
-      fs1 = FAO(1,c); fs2 = FAO(2,c); fs3 = FAO(3,c)
-      kcini = FAO(4,c); kcmid = FAO(5,c); kcend = FAO(6,c)
-      if (f <= fs1) w%kc = kcini
-      if ((f > fs1) .and. (f < fs2)) w%kc = kcini + (kcmid - kcini)*(f - fs1)/(fs2 - fs1)
-      if ((f >= fs2) .and. (f <= fs3)) w%kc = kcmid
-      if ((f > fs3) .and. (f <= 1.0)) w%kc = kcmid - (kcmid - kcend)*(f - fs3)/(1.0 - fs3)
-      if (f > 1.0) w%kc = kcini
-    end subroutine fao_curve
+  ! FAO-style four-segment curve for crop C at fraction F of the season.
+  ! KC is returned unchanged when no segment applies (F is NaN), as the
+  ! original's chain of IF statements left it.
+  pure real function fao_kc(c, f, kc) result(k)
+    integer, intent(in) :: c
+    real, intent(in) :: f, kc
+    real :: fs1, fs2, fs3, kcini, kcmid, kcend
+    fs1 = FAO(1,c); fs2 = FAO(2,c); fs3 = FAO(3,c)
+    kcini = FAO(4,c); kcmid = FAO(5,c); kcend = FAO(6,c)
+    k = kc
+    if (f <= fs1) k = kcini
+    if ((f > fs1) .and. (f < fs2)) k = kcini + (kcmid - kcini)*(f - fs1)/(fs2 - fs1)
+    if ((f >= fs2) .and. (f <= fs3)) k = kcmid
+    if ((f > fs3) .and. (f <= 1.0)) k = kcmid - (kcmid - kcend)*(f - fs3)/(1.0 - fs3)
+    if (f > 1.0) k = kcini
+  end function fao_kc
 
-    ! Alfalfa: Wright (1982), by cutting cycle. JDYPLT is green-up.
-    subroutine alfalfa(jd)
-      integer, intent(in) :: jd
-      integer :: k
-      if (jd < w%jdycut(1)) then
-        w%icut = 1
-        w%iefc = 1
-      end if
-      if ((jd >= w%jdycut(1)) .and. (jd < w%jdycut(2))) then
-        w%icut = 2
+  ! Alfalfa: Wright (1982), by cutting cycle. JDYPLT is green-up.
+  pure subroutine alfalfa_kc(w, jd)
+    type(csk_work_t), intent(inout) :: w
+    integer, intent(in) :: jd
+    integer :: k, ipct
+    if (jd < w%jdycut(1)) then
+      w%icut = 1
+      w%iefc = 1
+    end if
+    if ((jd >= w%jdycut(1)) .and. (jd < w%jdycut(2))) then
+      w%icut = 2
+      w%iefc = 2
+    end if
+    do k = 3, 5
+      if ((jd > w%jdycut(k-1)) .and. (jd < w%jdycut(k))) then
+        w%icut = k
         w%iefc = 2
       end if
-      do k = 3, 5
-        if ((jd > w%jdycut(k-1)) .and. (jd < w%jdycut(k))) then
-          w%icut = k
-          w%iefc = 2
-        end if
-      end do
-      if (jd >= w%jdycut(w%ncut)) then
-        w%icut = w%ncut
-        w%iefc = 3
+    end do
+    if (jd >= w%jdycut(w%ncut)) then
+      w%icut = w%ncut
+      w%iefc = 3
+    end if
+
+    ! Percent of time through the current growth cycle.
+    if ((w%icut == 1) .and. (jd >= w%jdyplt)) &
+      w%pct = real(jd - w%jdyplt) / real(w%jdycut(1) - w%jdyplt)
+    if (w%icut >= 2) then
+      if (w%iefc == 2) then
+        w%pct = real(jd - w%jdycut(w%icut-1)) / real(w%jdycut(w%icut) - w%jdycut(w%icut-1))
+      else
+        ! Final regrowth after the last cutting. The original measured
+        ! it from cutting 1 when there are two cuttings.
+        k = w%icut
+        if (k == 2 .and. .not. fix_on(w, FIX_ALFALFA_REGROWTH)) k = 1
+        w%pct = real(jd - w%jdycut(k)) / real(305 - w%jdycut(k))
       end if
+    end if
 
-      ! Percent of time through the current growth cycle.
-      if ((w%icut == 1) .and. (jd >= w%jdyplt)) &
-        w%pct = real(jd - w%jdyplt) / real(w%jdycut(1) - w%jdyplt)
-      if (w%icut >= 2) then
-        if (w%iefc == 2) then
-          w%pct = real(jd - w%jdycut(w%icut-1)) / real(w%jdycut(w%icut) - w%jdycut(w%icut-1))
-        else
-          ! Final regrowth after the last cutting. The original measured
-          ! it from cutting 1 when there are two cuttings.
-          k = w%icut
-          if (k == 2 .and. .not. fix_on(w, FIX_ALFALFA_REGROWTH)) k = 1
-          w%pct = real(jd - w%jdycut(k)) / real(305 - w%jdycut(k))
-        end if
-      end if
+    if ((jd <= w%jdyplt) .or. (jd >= 305)) w%kc = w%kcl(10)
 
-      if ((jd <= w%jdyplt) .or. (jd >= 305)) w%kc = w%kcl(10)
-
-      ipct = int(w%pct/0.1)
-      if ((ipct > 0) .and. (ipct < 10)) w%kc = w%cc(10,w%iefc,ipct) + &
-          10*mod(w%pct,0.1)*(w%cc(10,w%iefc,ipct+1) - w%cc(10,w%iefc,ipct))
-      if (ipct == 0) w%kc = w%kcl(10) + &
-          10*mod(w%pct,0.1)*(w%cc(10,w%iefc,ipct+1) - w%kcl(10))
-      if (ipct == 10) w%kc = w%cc(10,w%iefc,10)
-    end subroutine alfalfa
-
-  end subroutine crop_coefficient
+    ipct = int(w%pct/0.1)
+    if ((ipct > 0) .and. (ipct < 10)) w%kc = w%cc(10,w%iefc,ipct) + &
+        10*mod(w%pct,0.1)*(w%cc(10,w%iefc,ipct+1) - w%cc(10,w%iefc,ipct))
+    if (ipct == 0) w%kc = w%kcl(10) + &
+        10*mod(w%pct,0.1)*(w%cc(10,w%iefc,ipct+1) - w%kcl(10))
+    if (ipct == 10) w%kc = w%cc(10,w%iefc,10)
+  end subroutine alfalfa_kc
 
   !---------------------------------------------------------------------
   !  Snow accumulation and melt (SNOWMELT, original 3907-4022; SWAT).
   !  Works on w%rain, the day's liquid water reaching the ground.
   !---------------------------------------------------------------------
-  subroutine snowmelt(w, smtmp)
+  pure subroutine snowmelt(w, smtmp)
     type(csk_work_t), intent(inout) :: w
     real, intent(in) :: smtmp
     real :: smfac, xx, snomlt, snocov
@@ -408,7 +433,7 @@ contains
   !  SCS curve number adjusted for residue, growth stage and soil water
   !  in the top foot, with optional terrace channel storage.
   !---------------------------------------------------------------------
-  subroutine effective_precip(w, fix_residue_cn)
+  pure subroutine effective_precip(w, fix_residue_cn)
     type(csk_work_t), intent(inout) :: w
     logical, intent(in) :: fix_residue_cn
     real :: cnumb, cnavg, cnfalo, cnpeak, cnfact, curvn1, curvn3, smax, s3
@@ -516,7 +541,7 @@ contains
   !  Soil evaporation, two-stage (EVAP, original 1478-1542), with the
   !  potential reduced for surface residue.
   !---------------------------------------------------------------------
-  subroutine evaporation(w)
+  pure subroutine evaporation(w)
     type(csk_work_t), intent(inout) :: w
     real :: alpha, avail, avail2, resdep, redf
     integer :: jday
@@ -581,7 +606,7 @@ contains
   !  Infiltration (NTHET, original 1561-1602): fill layers to field
   !  capacity from the top; spread any remainder evenly over the profile.
   !---------------------------------------------------------------------
-  subroutine infiltrate(w)
+  pure subroutine infiltrate(w)
     type(csk_work_t), intent(inout) :: w
     real :: dinfl, amt, thetup
     integer :: i
@@ -615,9 +640,9 @@ contains
   !  management zone and the root zone, and the root distribution
   !  (ROOTZN, original 1733-1803).
   !---------------------------------------------------------------------
-  subroutine root_zone(w)
+  pure subroutine root_zone(w)
     type(csk_work_t), intent(inout) :: w
-    real :: remain, topdep, botdep, fdepth, zu, zl
+    real :: remain, topdep, botdep, fdepth, zu, zl, zu3, zl3
     integer :: i
 
     if (fix_on(w, FIX_PERENNIAL_ROOTS) .and. perennial(w%crop)) then
@@ -665,24 +690,30 @@ contains
       w%paw = w%paw + w%pawft(i)*w%perrzd(i)
     end do
 
-    ! Root distribution function by layer.
+    ! Root distribution function by layer: the share of uptake from
+    ! relative depth ZU to ZL, 2.0633*dz - 1.622*d(z**2) + 0.5587*d(z**3).
+    ! A layer's top cube is the bottom cube of the layer above, so it is
+    ! carried down rather than recomputed, and layers wholly below the
+    ! roots (ZU = ZL = 1) get the exact 0 the formula gives.
     zu = 0.0
+    zu3 = 0.0
     zl = w%depth(1)/w%rzd
     if (zl > 1.0) zl = 1.0
-    w%rdf(1) = rdist(zl, zu)
-    do i = 2, NLAY
-      zu = zl
-      zl = zl + w%depth(i)/w%rzd
-      if (zl > 1.0) zl = 1.0
-      w%rdf(i) = rdist(zl, zu)
+    do i = 1, NLAY
+      if (i > 1) then
+        zu = zl
+        zu3 = zl3
+        zl = zl + w%depth(i)/w%rzd
+        if (zl > 1.0) zl = 1.0
+      end if
+      if (zl == zu) then
+        zl3 = zu3
+        w%rdf(i) = 0.0
+      else
+        zl3 = zl**3.0
+        w%rdf(i) = 2.0633*(zl - zu) - 1.622*(zl*zl - zu*zu) + 0.5587*(zl3 - zu3)
+      end if
     end do
-
-  contains
-
-    pure real function rdist(z2, z1)
-      real, intent(in) :: z2, z1
-      rdist = 2.0633*(z2 - z1) - 1.622*(z2*z2 - z1*z1) + 0.5587*(z2**3.0 - z1**3.0)
-    end function rdist
 
   end subroutine root_zone
 
@@ -697,7 +728,7 @@ contains
   !  Depletion below field capacity in the irrigation management zone
   !  (the AWDPLN loops in DEPLT, original 1980-2005 and 2482-2507).
   !---------------------------------------------------------------------
-  real function mgmt_depletion(w) result(awdpln)
+  pure real function mgmt_depletion(w) result(awdpln)
     type(csk_work_t), intent(in) :: w
     real :: topdep, botdep, fdepth, depl
     integer :: i
@@ -730,24 +761,33 @@ contains
   !  Soil temperature by layer (SOILTEMP, original 3736-3903; SWAT
   !  equations 2.3.3-2.3.12). Does not feed back to the water balance.
   !---------------------------------------------------------------------
-  subroutine soil_temperature(w)
+  ! The soil-only terms of SOILTEMP, once per run: maximum damping depth,
+  ! water content scale, B and bare soil albedo. Same expressions as the
+  ! original, which evaluated them every day.
+  pure subroutine soil_temperature_setup(w)
     type(csk_work_t), intent(inout) :: w
-    real :: f, dp, ww, b, wc, dd, xx, sto, tlag, df, zd, bcv, tcov
-    real :: agbio, cv, cov, albsoil, albedo, tbare, surftemp
+    real :: f
+    f = w%bulkd / (w%bulkd + 686. * exp(-5.63 * w%bulkd))
+    w%st_dp = 39.4 + 98.4 * f
+    w%st_ww = .356 - .144 * w%bulkd
+    w%st_b = log(19.7 / w%st_dp)
+    w%st_albsoil = 0.30 - 0.10*(w%soil/100 - 4.)/5.
+  end subroutine soil_temperature_setup
+
+  pure subroutine soil_temperature(w)
+    type(csk_work_t), intent(inout) :: w
+    real, parameter :: tlag = 0.8
+    real :: f, wc, dd, xx, sto, df, zd, bcv, tcov
+    real :: agbio, cv, cov, albedo, tbare, surftemp
     integer :: k, jday, crop
 
     jday = w%jday
     crop = w%crop
-    tlag = 0.8
 
     ! Damping depth.
-    f = w%bulkd / (w%bulkd + 686. * exp(-5.63 * w%bulkd))
-    dp = 39.4 + 98.4 * f
-    ww = .356 - .144 * w%bulkd
-    wc = w%totwat / (ww * w%totdep)
-    b = log(19.7 / dp)
-    f = exp(b * ((1. - wc) / (1. + wc))**2.)
-    dd = f * dp
+    wc = w%totwat / (w%st_ww * w%totdep)
+    f = exp(w%st_b * ((1. - wc) / (1. + wc))**2.)
+    dd = f * w%st_dp
 
     ! Cover from above-ground biomass and residue.
     if ((jday >= w%jdyplt) .and. (jday < w%jdymat)) then
@@ -761,11 +801,20 @@ contains
       agbio = 0.0
     end if
 
+    ! The cover terms (exponentials of CV) only change when the cover does.
     cv = w%residue + agbio
-    bcv = 1.123*cv / (1.123*cv + exp(7.563 - 1.4566E-4 * cv))
+    if (.not. (w%st_have_cv .and. cv == w%st_cv)) then
+      w%st_bcv = 1.123*cv / (1.123*cv + exp(7.563 - 1.4566E-4 * cv))
+      w%st_cov = exp(-5.0E-5*1.123*cv)
+      w%st_cv = cv
+      w%st_have_cv = .true.
+    end if
+    bcv = w%st_bcv
     xx = 0.
     if (w%snoh2o >= 0.) then
-      if (w%snoh2o <= 4.724) then
+      if (w%snoh2o == 0.) then
+        xx = 0.                      ! the formula's exact value with no snow
+      else if (w%snoh2o <= 4.724) then
         xx = w%snoh2o / (w%snoh2o + exp(6.055 - 7.625 * w%snoh2o))
       else
         xx = 1.0
@@ -774,12 +823,11 @@ contains
     end if
 
     ! Soil surface temperature.
-    cov = exp(-5.0E-5*1.123*cv)
-    albsoil = 0.30 - 0.10*(w%soil/100 - 4.)/5.
+    cov = w%st_cov
     if (w%snoh2o > 0.02) then
       albedo = 0.8
     else
-      albedo = 0.23*(1.0 - cov) + cov * albsoil
+      albedo = 0.23*(1.0 - cov) + cov * w%st_albsoil
     end if
     sto = (4.1855E-02 * w%solar(jday) * (1. - albedo) - 14.) / 20.
     w%tavg = (w%tmax(jday) + w%tmin(jday))/2.0
@@ -791,10 +839,19 @@ contains
       surftemp = tbare
     end if
 
+    ! Each layer's depth factor (an exponential of DD) only changes with
+    ! the damping depth DD, that is with the profile's water content.
+    if (.not. (w%st_have_dd .and. dd == w%st_dd)) then
+      do k = 1, w%layers
+        zd = w%center(k)
+        zd = zd / dd
+        w%st_df(k) = zd / (zd + exp(-.8669 - 2.0775 * zd))
+      end do
+      w%st_dd = dd
+      w%st_have_dd = .true.
+    end if
     do k = 1, w%layers
-      zd = w%center(k)
-      zd = zd / dd
-      df = zd / (zd + exp(-.8669 - 2.0775 * zd))
+      df = w%st_df(k)
       w%soilt(k) = tlag * w%soilt(k) + (1. - tlag) * &
                    (df * (w%tanual - surftemp) + surftemp)
     end do
@@ -804,7 +861,7 @@ contains
   !  Yield (YIELDS, original 1809-1854), from transpiration deficits or
   !  ET, with an optional long-term trend.
   !---------------------------------------------------------------------
-  subroutine crop_yield(w)
+  pure subroutine crop_yield(w)
     type(csk_work_t), intent(inout) :: w
     real, parameter :: AC(11) = [-22.963, -13.156, -18.249, 1.000, 1.000, -11.008, &
                                  -22.963, -24.578, -17.165, -12.562, -20.334]

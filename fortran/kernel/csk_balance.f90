@@ -33,7 +33,7 @@ module csk_balance
 
 contains
 
-  logical function is_wet_cover(crop)
+  pure logical function is_wet_cover(crop)
     integer, intent(in) :: crop
     ! Riparian woodland, wetlands and open water: ET = KC * ETR.
     is_wet_cover = (crop == 16) .or. (crop == 18) .or. (crop == 19) .or. &
@@ -140,11 +140,28 @@ contains
     type(csk_result_t), intent(inout) :: res
     real :: e, t, et, tup, drain, extra, distd, amt, addl, thetup, dfract, dist
     real :: s0, s1, inflow, outflow, short, take, eacc
-    integer :: i, jday, jdywet, imon, iday, iweek, itill, crop
-    logical :: wet, reach248
+    integer :: i, jday, jdywet, imon, iday, iweek, itill, crop, mend
+    logical :: wet, reach248, leap
+    ! Bug-fix switches, looked up once per run instead of every day.
+    logical :: fx_cutting, fx_snowmelt, fx_residue_cn, fx_known_rain, fx_drain_clock
+    logical :: fx_forage_cutoff, fx_irr_count, fx_et_acc, fx_wetland, fx_drain_spread
+    logical :: fx_infiltration, fx_trans_limit
 
     crop = w%crop
     wet = is_wet_cover(crop)
+    leap = leap_calendar(w)
+    fx_cutting = fix_on(w, FIX_FORAGE_CUTTING_STAGE)
+    fx_snowmelt = fix_on(w, FIX_SNOWMELT_BASE)
+    fx_residue_cn = fix_on(w, FIX_RESIDUE_CN)
+    fx_known_rain = fix_on(w, FIX_KNOWN_DATE_RAIN)
+    fx_drain_clock = fix_on(w, FIX_DRAINAGE_CLOCK)
+    fx_forage_cutoff = fix_on(w, FIX_FORAGE_CUTOFF)
+    fx_irr_count = fix_on(w, FIX_IRRIGATION_COUNT)
+    fx_et_acc = fix_on(w, FIX_ET_ACCUMULATION)
+    fx_wetland = fix_on(w, FIX_WETLAND_BALANCE)
+    fx_drain_spread = fix_on(w, FIX_DRAINAGE_SPREAD)
+    fx_infiltration = fix_on(w, FIX_INFILTRATION_OUTPUT)
+    fx_trans_limit = fix_on(w, FIX_TRANSPIRATION_LIMIT)
 
     ! ---- Initialise (original 1863-1945) ----
     w%awater = 0.
@@ -198,6 +215,10 @@ contains
     w%irnwk = 0.; w%irgwk = 0.
 
     ! ---- Daily loop ----
+    ! Storage at the start of a day is the storage at the end of the day
+    ! before (nothing changes it in between), so it is computed once.
+    s1 = storage()
+    mend = -1
     do jday = w%jdybg, w%jdyend
       w%jday = jday
       w%today = jday
@@ -212,7 +233,7 @@ contains
       w%wetsup = 0.0
       w%gdd = w%gdds(jday)
       w%tavg = 0.5 * (w%tmax(jday) + w%tmin(jday))
-      s0 = storage()
+      s0 = s1
 
       ! Growth stage: by GDD for grain and tuber crops, by cutting for
       ! alfalfa and hay, and before/after cover for the rest.
@@ -223,7 +244,7 @@ contains
         if ((crop == 10) .or. (crop == 11)) then
           ! The original set ICUT to 1 at the start and never updated it
           ! here (CROPCO, which tracks cuttings, ran before DEPLT).
-          if (fix_on(w, FIX_FORAGE_CUTTING_STAGE)) w%icut = cutting_cycle(w%icut)
+          if (fx_cutting) w%icut = cutting_cycle(w%icut)
           w%kstg = w%icut
         end if
       else
@@ -236,23 +257,23 @@ contains
       ! Rain and snow melt: runoff, then infiltration.
       if ((w%precip(jday) > 0.) .or. (w%snoh2o > 0.0)) then
         w%rain = w%precip(jday)
-        if (fix_on(w, FIX_SNOWMELT_BASE)) then
+        if (fx_snowmelt) then
           call snowmelt(w, w%smtmp)
         else
           call snowmelt(w, 0.0)          ! SMTMP was never set in the original
         end if
-        call effective_precip(w, fix_on(w, FIX_RESIDUE_CN))
+        call effective_precip(w, fx_residue_cn)
         if ((w%eprecip > w%rain) .and. (w%iterrc == 0)) then
           if (w%status == 0) w%status = CSK_ERR_EFF_PRECIP
         end if
         ! The original counted all precipitation as effective in known-
         ! date runs, while still reporting the runoff and storing snow.
-        if (w%irrtyp == 2 .and. .not. fix_on(w, FIX_KNOWN_DATE_RAIN)) &
+        if (w%irrtyp == 2 .and. .not. fx_known_rain) &
           w%eprecip = w%precip(jday)
         w%dinf = w%eprecip
         ! The original restarted the drainage clock here even when no
         ! water soaked in (snow on the ground, or all of it ran off).
-        if (w%dinf > 0. .or. .not. fix_on(w, FIX_DRAINAGE_CLOCK)) jdywet = jday
+        if (w%dinf > 0. .or. .not. fx_drain_clock) jdywet = jday
         call infiltrate(w)
       end if
 
@@ -269,7 +290,7 @@ contains
           ! the summer shut-off for alfalfa, hay and pasture.
           if (jday < w%jfirst) exit irrigation
           if ((crop >= 10) .and. (crop <= 12) .or. &
-              (crop == 13 .and. fix_on(w, FIX_FORAGE_CUTOFF))) then
+              (crop == 13 .and. fx_forage_cutoff)) then
             if ((jday > w%jstopi) .and. (jday < w%jgoi)) exit irrigation
             if (jday > 304) exit irrigation
           else
@@ -283,7 +304,7 @@ contains
             call irrigate(w)
           end if
         else
-          if (fix_on(w, FIX_IRRIGATION_COUNT)) then
+          if (fx_irr_count) then
             if (w%irrtyp == 2) then
               ! Known irrigation dates and depths, with their own index.
               if (int(w%fdirrig(w%ievent,1)) /= jday) exit irrigation
@@ -316,7 +337,7 @@ contains
         w%snirr = w%snirr + w%netirr
         w%irrinf = w%dinf
         ! Likewise on every day irrigation was checked, irrigated or not.
-        if (w%dinf > 0. .or. .not. fix_on(w, FIX_DRAINAGE_CLOCK)) jdywet = jday
+        if (w%dinf > 0. .or. .not. fx_drain_clock) jdywet = jday
         call infiltrate(w)
       end block irrigation
 
@@ -339,7 +360,7 @@ contains
         end do
       end if
 
-      call soil_temperature(w)
+      if (w%soil_temp) call soil_temperature(w)
 
       ! ---- Evaporation and transpiration ----
       reach248 = .false.
@@ -378,7 +399,7 @@ contains
       ! Seasonal ET and transpiration deficit totals. The original added
       ! E1 + E2, which still hold the last day evaporation was computed
       ! when it was skipped today (potential at or below 0.001 in).
-      if (fix_on(w, FIX_ET_ACCUMULATION)) then
+      if (fx_et_acc) then
         eacc = e
       else
         eacc = w%e1 + w%e2
@@ -405,7 +426,7 @@ contains
       ! profile is held at field capacity.
       if (wet) then
         et = w%kc * w%etr(jday)
-        if (fix_on(w, FIX_WETLAND_BALANCE)) then
+        if (fx_wetland) then
           ! ET is met first from water above field capacity (today's
           ! rain), top down; the rest, and any refill of a layer below
           ! field capacity, is supplied from ground or surface water and
@@ -459,7 +480,7 @@ contains
       ! The original left out of DISTD any layer already exactly at field
       ! capacity before the first wet layer, yet still added DIST to it,
       ! creating water.
-      if (fix_on(w, FIX_DRAINAGE_SPREAD)) then
+      if (fx_drain_spread) then
         distd = 0.0
         do i = 1, w%layers
           if (w%theta(i) >= w%fieldc(i)) distd = distd + w%depth(i)
@@ -491,11 +512,17 @@ contains
         w%tveg = w%tveg + t
       end if
 
-      ! Whole-profile depletion (used by the next day's irrigation) and
+      ! Whole-profile depletion (used by the next day's irrigation),
+      ! soil water and storage (soil water plus snow) at the end of the
+      ! day, in one pass (each sum in the same order as before), and
       ! management-zone depletion.
       w%dpln = 0.0
+      w%totwat = 0.0
+      s1 = w%snoh2o
       do i = 1, w%layers
         w%dpln = w%dpln + (w%fieldc(i) - w%theta(i))*w%depth(i)
+        w%totwat = w%totwat + w%theta(i)*w%depth(i)
+        s1 = s1 + w%theta(i)*w%depth(i)
       end do
       w%awdpln = mgmt_depletion(w)
 
@@ -515,7 +542,14 @@ contains
       w%irgwk(iweek) = w%irgwk(iweek) + w%groirr
 
       ! ---- Monthly totals ----
-      call calday(jday, imon, iday, leap_calendar(w))
+      ! Month and day of month: calday on the first day and at each month
+      ! change, counted on in between.
+      if (jday > mend) then
+        call calday(jday, imon, iday, leap)
+        mend = month_end(imon, leap)
+      else
+        iday = iday + 1
+      end if
       w%etrmon(imon) = w%etrmon(imon) + w%etr(jday)
       w%emon(imon) = w%emon(imon) + e
       w%tmon(imon) = w%tmon(imon) + t
@@ -537,7 +571,7 @@ contains
       w%numirr(imon) = w%irigno
       ! The original added DINF here, after infiltration had already
       ! set it to zero, so INFMON was always 0.
-      if (fix_on(w, FIX_INFILTRATION_OUTPUT)) then
+      if (fx_infiltration) then
         w%infmon(imon) = w%infmon(imon) + w%infday
       else
         w%infmon(imon) = w%infmon(imon) + w%dinf
@@ -546,13 +580,7 @@ contains
       w%wetsups = w%wetsups + w%wetsup
       if (iday <= 1) w%dplmon(imon) = w%dpln
 
-      w%totwat = 0.0
-      do i = 1, w%layers
-        w%totwat = w%totwat + w%theta(i)*w%depth(i)
-      end do
-
       ! ---- Daily record and water balance check ----
-      s1 = storage()
       inflow = w%precip(jday) + w%runon + w%irrinf + w%wetsup
       if (wet) then
         outflow = w%runoff + et + drain
@@ -769,13 +797,13 @@ contains
         ! The original kept T at the demand (more than was taken) and also
         ! raised any root-zone layer already below PWP up to it.
         do k = 1, w%layers
-          if (fix_on(w, FIX_TRANSPIRATION_LIMIT) .and. w%theta(k) <= w%pwp(k)) cycle
+          if (fx_trans_limit .and. w%theta(k) <= w%pwp(k)) cycle
           w%theta(k) = w%pwp(k)*w%perrzd(k) + w%theta(k)*(1.0 - w%perrzd(k))
           perdep(k) = 1.0
         end do
         w%dpln = w%paw
         tuse = wavail
-        if (fix_on(w, FIX_TRANSPIRATION_LIMIT)) t = tuse
+        if (fx_trans_limit) t = tuse
         return
       end if
 
@@ -788,7 +816,7 @@ contains
           if (uptake > wavail) then
             ! Not enough water in the layer for its share.
             tuse = tuse + wavail
-            if (.not. (fix_on(w, FIX_TRANSPIRATION_LIMIT) .and. w%theta(k) <= w%pwp(k))) &
+            if (.not. (fx_trans_limit .and. w%theta(k) <= w%pwp(k))) &
               w%theta(k) = w%pwp(k)*w%perrzd(k) + w%theta(k)*(1.0 - w%perrzd(k))
             tflag = .true.
           else
@@ -816,7 +844,7 @@ contains
       end do
       ! The original reported the demand T even when the loop stopped up
       ! to 0.001 in short of it (or failed to converge).
-      if (fix_on(w, FIX_TRANSPIRATION_LIMIT)) t = tuse
+      if (fx_trans_limit) t = tuse
     end subroutine transpiration
 
   end subroutine water_balance

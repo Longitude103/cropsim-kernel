@@ -27,7 +27,7 @@ module csk_types
   integer, parameter, public :: NEVENT = 50      ! known irrigation events
   integer, parameter, public :: NTILL = 20       ! tillage operations
 
-  integer(c_int), parameter, public :: CSK_API_VERSION = 3
+  integer(c_int), parameter, public :: CSK_API_VERSION = 4
 
   ! ---- Status codes (1-4 are the original program's STOP checks) ----
   integer(c_int), parameter, public :: CSK_OK             = 0
@@ -189,6 +189,10 @@ module csk_types
     integer(c_int) :: livecond       ! 1: original LIVECOND rule applies
     integer(c_int) :: legacy_round   ! 1: round state like INITIAL.DAT
     integer(c_int) :: et_method      ! CSK_ET_* (0: original split)
+    ! 1: skip soil temperature (SOILTEMP). It never feeds the water
+    ! balance; it only updates state%soilt, which is then passed through
+    ! unchanged. Saves about a quarter of the run time. Added in API 4.
+    integer(c_int) :: skip_soil_temp
   end type csk_options_t
 
   ! ------------------------------------------------------------------
@@ -238,6 +242,7 @@ module csk_types
     integer :: fixes = 0
     integer :: status = 0
     integer :: et_method = 0
+    logical :: soil_temp = .true.    ! .false.: options%skip_soil_temp
     ! parameters
     real    :: etrfact = 0.
     integer :: nfday = 0, ytrend = 0
@@ -283,8 +288,6 @@ module csk_types
     ! weather, by day of year (padded past 366 with zeros)
     integer :: iyear = 0, imstr = 1, idstr = 1, ndays = 0, jdystr = 1, jdystp = 0
     real    :: lat = 0., long = 0., elev = 0.
-    integer :: wx_ndays = 0
-    real    :: wx_tmax(NDAY) = 0., wx_tmin(NDAY) = 0., wx_precip(NDAY) = 0., wx_etr(NDAY) = 0.
     real    :: tmax(NDAY) = 0., tmin(NDAY) = 0., precip(NFCST) = 0., etr(NFCST) = 0.
     real    :: gdds(0:NDAY) = 0., cropkc(NFCST) = 0., solar(NDAY) = 0.
     real    :: tanual = 0.
@@ -304,6 +307,17 @@ module csk_types
     real    :: dpln = 0., awdpln = 0., dpla = 0., totwat = 0.
     real    :: curvno = 0.
     real    :: wetsup = 0.
+    ! Soil temperature terms that depend only on the soil, computed once
+    ! per run (SOILTEMP recomputed them every day): maximum damping
+    ! depth DP (in), the water content scale WW, B = ln(19.7/DP) and the
+    ! bare soil albedo.
+    real    :: st_dp = 0., st_ww = 0., st_b = 0., st_albsoil = 0.
+    ! Soil temperature values that are pure functions of one daily
+    ! input, kept from the last day they were computed and reused while
+    ! that input is unchanged: the cover terms BCV and COV of the cover
+    ! CV, and the depth factors DF of the damping depth DD.
+    logical :: st_have_cv = .false., st_have_dd = .false.
+    real    :: st_cv = 0., st_bcv = 0., st_cov = 0., st_dd = 0., st_df(NLAY) = 0.
     ! FAO-56 dual crop coefficient (et_method = CSK_ET_FAO56_DUAL):
     ! basal coefficient, evaporation coefficient, surface-layer depletion
     ! of the exposed wetted fraction (in) and the fraction last wetted.
