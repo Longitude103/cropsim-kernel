@@ -91,7 +91,7 @@ caller asks otherwise.
 | C | `csk_options_t.skip_soil_temp = 1` |
 | Python | `Kernel.run_year(..., skip_soil_temperature=True)` |
 | Rust | `RunOptions { skip_soil_temperature: true, .. }` |
-| Run file | `[model] soil_temperature = false` (`run_summary.json` records it) |
+| Parcel run file (Parcel-Based-Modeling) | `[model] soil_temperature = false` (`run_summary.json` records it) |
 
 When skipped, every annual, monthly, weekly and daily result and every
 other state value is bit for bit the same, and `soilt` comes back exactly
